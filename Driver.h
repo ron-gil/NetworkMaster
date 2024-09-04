@@ -1,3 +1,4 @@
+#pragma once
 #include <ntddk.h>
 #include <initguid.h>
 #include <fwpmk.h>
@@ -31,6 +32,7 @@ NTSTATUS GenerateGUID(GUID* myGuid);
 NTSTATUS CreateFilter(
     const GUID* layerKey,
     FWP_ACTION_TYPE actionType,
+    const GUID* calloutKey,
     const GUID* subLayerKey,
     UINT32 numConditions,
     FWPM_FILTER_CONDITION0* conditions,

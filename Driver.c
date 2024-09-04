@@ -1,4 +1,5 @@
 #include "Driver.h"
+#include "WfpCallout.h"
 
 #define GUID_FORMAT "%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX"
 #define GUID_ARG(guid) (guid).Data1, (guid).Data2, (guid).Data3, (guid).Data4[0], (guid).Data4[1], (guid).Data4[2], (guid).Data4[3], (guid).Data4[4], (guid).Data4[5], (guid).Data4[6], (guid).Data4[7]
@@ -40,15 +41,25 @@ DriverEntry(
         return status;
     }
 
+    // Create a subLayer
     status = CreateSubLayer(L"NetworkMaster Sublayer", L"Sublayer for NetworkMaster filters");
     if (!NT_SUCCESS(status)) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateSubLayer failed with status %X\n", status));
         return status;
     }
 
+    // Create a callout
+    status = CreateCallout(DriverObject->DeviceObject, &FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, NULL, NULL, NULL, L"NetworkMaster Callout", NULL);
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateCallout failed with status %X\n", status));
+        return status;
+    }
+
+    // Create filter
     status = CreateFilter(
         &FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
         FWP_ACTION_BLOCK,
+        &calloutKey,
         &subLayerGuids[0],
         0,
         NULL,
@@ -102,7 +113,12 @@ VOID WfpCleanup()
     if (engineHandle) {
         RemoveAllFilters();
 
+        FwpmCalloutDeleteByKey0(engineHandle, &calloutKey);
+        FwpsCalloutUnregisterByKey0(&calloutKey);
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed and unregistered the callout"));
+
         FwpmSubLayerDeleteByKey(engineHandle, &subLayerGuids[0]);
+        subLayerCount--;
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed subLayer\n"));
 
         FwpmEngineClose(engineHandle);
@@ -176,6 +192,7 @@ NTSTATUS GenerateGUID(GUID* myGuid) {
 NTSTATUS CreateFilter(
     const GUID* layerKey,
     FWP_ACTION_TYPE actionType,
+    const GUID* actionCalloutKey,
     const GUID* subLayerKey,
     UINT32 numConditions,
     FWPM_FILTER_CONDITION0* conditions,
@@ -199,6 +216,9 @@ NTSTATUS CreateFilter(
     fwpFilter.layerKey = *layerKey;
     //fwpFilter.action.type = FWP_ACTION_PERMIT;
     fwpFilter.action.type = actionType;
+    if (actionCalloutKey) {
+        fwpFilter.action.calloutKey = *actionCalloutKey;
+    }
     //fwpFilter.subLayerKey = subLayer.subLayerKey;
     fwpFilter.subLayerKey = *subLayerKey;
     fwpFilter.weight.type = FWP_EMPTY; // auto-weight
