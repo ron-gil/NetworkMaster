@@ -30,12 +30,18 @@
     <ClCompile Include="WfpCallout.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="WfpFilters.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="WfpCallout.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Driver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="WfpFilters.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
