@@ -1,6 +1,7 @@
 #include "Driver.h"
 #include "WfpCallout.h"
 #include "WfpFilters.h"
+#include "IoctlHandler.h"
 
 
 HANDLE engineHandle = NULL;
@@ -33,35 +34,26 @@ DriverEntry(
         return status;
     }
 
-    // Create a subLayer
-    status = CreateSubLayer(L"NetworkMaster Sublayer", L"Sublayer for NetworkMaster filters");
+    // Create the inbound subLayer
+    status = CreateSubLayer(L"NetworkMaster Sublayer: Inbound", L"Sublayer for NetworkMaster inbound filters", &inboundSubLayerKey);
     if (!NT_SUCCESS(status)) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateSubLayer failed with status %X\n", status));
         return status;
     }
 
-    // Create a callout
-    status = CreateCallout(DriverObject->DeviceObject, &FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, NULL, NULL, NULL, L"NetworkMaster Callout", NULL);
+    // Create the outbound subLayer
+    status = CreateSubLayer(L"NetworkMaster Sublayer: Outbound", L"Sublayer for NetworkMaster outbound filters", &outboundSubLayerKey);
     if (!NT_SUCCESS(status)) {
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateCallout failed with status %X\n", status));
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateSubLayer failed with status %X\n", status));
         return status;
     }
 
-    // Create filter
-    status = CreateFilter(
-        &FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
-        FWP_ACTION_BLOCK,
-        &calloutKey,
-        &subLayerGuids[0],
-        0,
-        NULL,
-        L"NetworkMaster Filter test",
-        NULL
-    );
-    if (!NT_SUCCESS(status)) {
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateFilter failed with status %X\n", status));
-        return status;
-    }
+    //// Create a callout
+    //status = CreateCallout(DriverObject->DeviceObject, &FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, NULL, NULL, NULL, L"NetworkMaster Callout", NULL);
+    //if (!NT_SUCCESS(status)) {
+    //    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateCallout failed with status %X\n", status));
+    //    return status;
+    //}
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: DriverEntry - End\n"));
 
@@ -76,8 +68,10 @@ NetworkMasterEvtDeviceAdd(
 {
     UNREFERENCED_PARAMETER(Driver);
 
-    NTSTATUS status = STATUS_SUCCESS;
+    NTSTATUS status;
     WDFDEVICE hDevice;
+    WDF_IO_QUEUE_CONFIG ioQueueConfig;
+    WDF_OBJECT_ATTRIBUTES ioQueueAttributes;
 
     // Debugging info: Start of EvtDeviceAdd
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: EvtDeviceAdd - Start\n"));
@@ -89,13 +83,24 @@ NetworkMasterEvtDeviceAdd(
         return status;
     }
 
-    // Initialize WFP engine for the device if required (in this case, it's already initialized in DriverEntry)
+    // Initialize the I/O queue configuration
+    WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&ioQueueConfig, WdfIoQueueDispatchSequential);
+    ioQueueConfig.EvtIoDeviceControl = NetworkMasterEvtIoDeviceControl; // Set the I/O control callback
+
+    // Create the default I/O queue
+    WDF_OBJECT_ATTRIBUTES_INIT(&ioQueueAttributes);
+    status = WdfIoQueueCreate(hDevice, &ioQueueConfig, &ioQueueAttributes, WDF_NO_HANDLE);
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: WdfIoQueueCreate failed with status %X\n", status));
+        return status;
+    }
 
     // Debugging info: End of EvtDeviceAdd
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: EvtDeviceAdd - End\n"));
 
     return status;
 }
+
 
 VOID WfpCleanup()
 {
@@ -105,13 +110,15 @@ VOID WfpCleanup()
     if (engineHandle) {
         RemoveAllFilters();
 
-        FwpmCalloutDeleteByKey0(engineHandle, &calloutKey);
+        /*FwpmCalloutDeleteByKey0(engineHandle, &calloutKey);
         FwpsCalloutUnregisterByKey0(&calloutKey);
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed and unregistered the callout"));
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed and unregistered the callout"));*/
 
-        FwpmSubLayerDeleteByKey(engineHandle, &subLayerGuids[0]);
-        subLayerCount--;
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed subLayer\n"));
+        FwpmSubLayerDeleteByKey(engineHandle, &inboundSubLayerKey);
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed inbound subLayer\n"));
+
+        FwpmSubLayerDeleteByKey(engineHandle, &inboundSubLayerKey);
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed outbound subLayer\n"));
 
         FwpmEngineClose(engineHandle);
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: WfpEngineClosed\n"));
@@ -148,50 +155,50 @@ NetworkMasterEvtIoDeviceControl(
 )
 {
     NTSTATUS status = STATUS_SUCCESS;
-    PVOID buffer = NULL;
+    //PVOID buffer = NULL;
 
     UNREFERENCED_PARAMETER(Queue);
     UNREFERENCED_PARAMETER(OutputBufferLength);
     UNREFERENCED_PARAMETER(InputBufferLength);
 
     switch (IoControlCode) {
-    case IOCTL_ADD_FILTER:
-        // Handle adding a filter
-        // Parse the input buffer to get the filter parameters
-        status = AddFilterFromBuffer(Request);
-        break;
+    //case IOCTL_ADD_FILTER:
+    //    // Handle adding a filter
+    //    // Parse the input buffer to get the filter parameters
+    //    status = AddFilterFromBuffer(Request);
+    //    break;
 
-    case IOCTL_REMOVE_FILTER:
-        // Handle removing a filter
-        // Parse the input buffer to get the filter GUID
-        status = RemoveFilterFromBuffer(Request);
-        break;
+    //case IOCTL_REMOVE_FILTER:
+    //    // Handle removing a filter
+    //    // Parse the input buffer to get the filter GUID
+    //    status = RemoveFilterFromBuffer(Request);
+    //    break;
 
     case IOCTL_STOP_INBOUND:
         // Handle stopping inbound traffic
         status = StopInboundTraffic();
         break;
 
-    case IOCTL_STOP_OUTBOUND:
-        // Handle stopping outbound traffic
-        status = StopOutboundTraffic();
-        break;
+    //case IOCTL_STOP_OUTBOUND:
+    //    // Handle stopping outbound traffic
+    //    status = StopOutboundTraffic();
+    //    break;
 
     case IOCTL_START_INBOUND:
         // Handle starting inbound traffic
         status = StartInboundTraffic();
         break;
 
-    case IOCTL_START_OUTBOUND:
-        // Handle starting outbound traffic
-        status = StartOutboundTraffic();
-        break;
+    //case IOCTL_START_OUTBOUND:
+    //    // Handle starting outbound traffic
+    //    status = StartOutboundTraffic();
+    //    break;
 
-    case IOCTL_MODIFY_PACKET:
-        // Handle modifying a packet
-        // Parse the input buffer to get the packet ID and structure
-        status = ModifyPacketFromBuffer(Request);
-        break;
+    //case IOCTL_MODIFY_PACKET:
+    //    // Handle modifying a packet
+    //    // Parse the input buffer to get the packet ID and structure
+    //    status = ModifyPacketFromBuffer(Request);
+    //    break;
 
     default:
         status = STATUS_INVALID_DEVICE_REQUEST;

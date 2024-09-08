@@ -20,6 +20,14 @@ extern HANDLE engineHandle;
 // Driver-related function declarations
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD NetworkMasterEvtDeviceAdd;
+NTSTATUS NetworkMasterEvtIoDeviceControl(
+    _In_ WDFQUEUE Queue,
+    _In_ WDFREQUEST Request,
+    _In_ size_t OutputBufferLength,
+    _In_ size_t InputBufferLength,
+    _In_ ULONG IoControlCode
+);
+
 VOID DriverUnload(_In_ PDRIVER_OBJECT DriverObject);
 
 VOID WfpCleanup();

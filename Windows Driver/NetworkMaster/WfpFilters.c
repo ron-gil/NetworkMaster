@@ -1,40 +1,56 @@
 #include "WfpFilters.h"
 
 
-GUID subLayerGuids[MAX_SUB_LAYER_GUID];
-ULONG subLayerCount = 0;
+GUID outboundSubLayerKey;
+GUID inboundSubLayerKey;
 
 // Array to store the filter GUIDs
 GUID filterGuids[MAX_FILTERS];
-ULONG filterCount = 0;
+UINT16 filterCount;
 
-VOID RemoveAllFilters() {
-    ULONG tempFilterCount = filterCount;
-    for (ULONG i = 0; i < tempFilterCount; ++i) {
-        RemoveFilter(filterGuids[i]);
+BOOL IsGuidZero(const GUID* guid) {
+    if (guid->Data1 == 0 &&
+        guid->Data2 == 0 &&
+        guid->Data3 == 0 &&
+        memcmp(guid->Data4, "\0\0\0\0\0\0\0\0", sizeof(guid->Data4)) == 0) {
+        return TRUE;
     }
-    if (filterCount > 0) {
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed to remove all filters\n"));
-    }
-    else
-    {
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed all filters\n"));
-    }
+    return FALSE;
 }
 
-VOID RemoveFilter(const GUID filterGuid) {
+VOID ZeroGuid(GUID* guid) {
+    guid->Data1 = 0;
+    guid->Data2 = 0;
+    guid->Data3 = 0;
+    memset(guid->Data4, 0, sizeof(guid->Data4));
+}
+
+VOID RemoveAllFilters() {
+    for (ULONG i = 0; i < MAX_FILTERS; ++i) {
+        if (! IsGuidZero(&filterGuids[i])) {
+            RemoveFilter(&filterGuids[i]);
+        }
+    }
+
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed all filters\n"));
+}
+
+NTSTATUS RemoveFilter(GUID* filterGuid) {
     NTSTATUS status;
-    status = FwpmFilterDeleteByKey(engineHandle, &filterGuid);
+    status = FwpmFilterDeleteByKey0(engineHandle, filterGuid);
     if (!NT_SUCCESS(status)) {
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed to delete filter with GUID "GUID_FORMAT" (status: %X)\n", GUID_ARG(filterGuid), status));
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed to delete filter with GUID "GUID_FORMAT" (status: %X)\n", GUID_ARG(*filterGuid), status));
     }
     else {
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Successfully deleted filter with GUID "GUID_FORMAT"\n", GUID_ARG(filterGuid)));
-        filterCount--;
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Successfully deleted filter with GUID "GUID_FORMAT"\n", GUID_ARG(*filterGuid)));
+        // Zero out the guid to signal no longer viable for use
+        ZeroGuid(filterGuid);
     }
+    return status;
 }
 
 NTSTATUS CreateFilter(
+    const GUID* definedFilterKey,
     const GUID* layerKey,
     FWP_ACTION_TYPE actionType,
     const GUID* actionCalloutKey,
@@ -44,12 +60,20 @@ NTSTATUS CreateFilter(
     wchar_t* name,
     wchar_t* description
 ) {
-    // Add filter to block traffic on IP V4 for all applications.
+    wchar_t fullName[MAX_NAME_LENGTH];
+
     FWPM_FILTER0 fwpFilter;
     RtlZeroMemory(&fwpFilter, sizeof(FWPM_FILTER0));
 
+    NTSTATUS status = STATUS_SUCCESS;
+
     GUID filterKey;
-    NTSTATUS status = GenerateGUID(&filterKey);
+    if (!definedFilterKey) {
+        status = GenerateGUID(&filterKey);
+    }
+    else {
+        filterKey = *definedFilterKey;
+    }
 
     if (!NT_SUCCESS(status)) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateFilter failed calling GenerateGUID with status %X\n", status));
@@ -71,7 +95,18 @@ NTSTATUS CreateFilter(
     fwpFilter.numFilterConditions = numConditions; // applies to all traffic
     fwpFilter.filterCondition = conditions;
 
-    fwpFilter.displayData.name = name;
+    // Ensure the combined length does not exceed the buffer size
+    if ((wcslen(FILTER_PREFIX) + wcslen(name)) < MAX_NAME_LENGTH) {
+        // Copy the prefix and append the original name
+        wcscpy(fullName, FILTER_PREFIX);
+        wcscat(fullName, name);
+    }
+    else {
+        status = STATUS_UNSUCCESSFUL;
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster:  Adding filter failed - Filter name exceeds max length\n"));
+        return status;
+    }
+    fwpFilter.displayData.name = fullName;
     fwpFilter.displayData.description = description;
 
     status = FwpmFilterAdd0(engineHandle, &fwpFilter, NULL, NULL);
@@ -93,7 +128,7 @@ NTSTATUS CreateFilter(
     return STATUS_SUCCESS;
 }
 
-NTSTATUS CreateSubLayer(wchar_t* name, wchar_t* description) {
+NTSTATUS CreateSubLayer(wchar_t* name, wchar_t* description, GUID* placeHolderKey) {
     // Define and add the sublayer
     FWPM_SUBLAYER0 subLayer;
     RtlZeroMemory(&subLayer, sizeof(FWPM_SUBLAYER0));
@@ -120,9 +155,45 @@ NTSTATUS CreateSubLayer(wchar_t* name, wchar_t* description) {
         return status;
     }
 
-    subLayerGuids[subLayerCount++] = subLayerKey;
+    *placeHolderKey = subLayerKey;
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Added subLayer\n"));
 
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS FindFilterKeyByName(wchar_t* name, GUID* placeholderKey) {
+    FWPM_FILTER_ENUM_TEMPLATE0 enumTemplate;
+    FWPM_FILTER0** filters = NULL;
+    UINT32 numFilters = 0;
+    NTSTATUS status;
+    UINT32 i = 0;
+
+    // Initialize the enumeration template (here we're leaving it open to all layers)
+    RtlZeroMemory(&enumTemplate, sizeof(enumTemplate));
+
+    // Enumerate all filters
+    status = FwpmFilterEnum0(engineHandle, &enumTemplate, 0xFFFFFFFF, &filters, &numFilters);
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Error enumerating filters: %X\n", status));
+        return status;
+    }
+
+    // Iterate through the list of filters and compare their names
+    for (i = 0; i < numFilters; i++) {
+        if (filters[i]->displayData.name && wcscmp(filters[i]->displayData.name, name) == 0) {
+            // Found a match, copy the GUID to the placeholder
+            *placeholderKey = filters[i]->filterKey;
+            break;
+        }
+    }
+
+    if (i >= numFilters) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Filter of name %ls doesn't exist\n", name));
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    // Free memory
+    FwpmFreeMemory0(filters);
     return STATUS_SUCCESS;
 }
