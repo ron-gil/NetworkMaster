@@ -72,6 +72,7 @@ NetworkMasterEvtDeviceAdd(
     WDFDEVICE hDevice;
     WDF_IO_QUEUE_CONFIG ioQueueConfig;
     WDF_OBJECT_ATTRIBUTES ioQueueAttributes;
+    DECLARE_CONST_UNICODE_STRING(symbolicLinkName, DOS_DEVICE_NAME);
 
     // Debugging info: Start of EvtDeviceAdd
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: EvtDeviceAdd - Start\n"));
@@ -80,6 +81,13 @@ NetworkMasterEvtDeviceAdd(
     status = WdfDeviceCreate(&DeviceInit, WDF_NO_OBJECT_ATTRIBUTES, &hDevice);
     if (!NT_SUCCESS(status)) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: WdfDeviceCreate failed with status %X\n", status));
+        return status;
+    }
+
+    // Create the symbolic link
+    status = WdfDeviceCreateSymbolicLink(hDevice, &symbolicLinkName);
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: WdfDeviceCreateSymbolicLink failed with status %X\n", status));
         return status;
     }
 
@@ -161,6 +169,8 @@ NetworkMasterEvtIoDeviceControl(
     UNREFERENCED_PARAMETER(OutputBufferLength);
     UNREFERENCED_PARAMETER(InputBufferLength);
 
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Received IOCTL Code: %X\n", IoControlCode));
+
     switch (IoControlCode) {
     //case IOCTL_ADD_FILTER:
     //    // Handle adding a filter
@@ -175,8 +185,15 @@ NetworkMasterEvtIoDeviceControl(
     //    break;
 
     case IOCTL_STOP_INBOUND:
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Handling IOCTL_STOP_INBOUND\n"));
         // Handle stopping inbound traffic
         status = StopInboundTraffic();
+        if (NT_SUCCESS(status)) {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Successfully stopped inbound traffic.\n"));
+        }
+        else {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to stop inbound traffic. Status: %X\n", status));
+        }
         break;
 
     //case IOCTL_STOP_OUTBOUND:
@@ -185,8 +202,15 @@ NetworkMasterEvtIoDeviceControl(
     //    break;
 
     case IOCTL_START_INBOUND:
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Handling IOCTL_START_INBOUND\n"));
         // Handle starting inbound traffic
         status = StartInboundTraffic();
+        if (NT_SUCCESS(status)) {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Successfully started inbound traffic.\n"));
+        }
+        else {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to start inbound traffic. Status: 0x%X\n", status));
+        }
         break;
 
     //case IOCTL_START_OUTBOUND:
@@ -201,11 +225,14 @@ NetworkMasterEvtIoDeviceControl(
     //    break;
 
     default:
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Invalid IOCTL code received: %X\n", IoControlCode));
         status = STATUS_INVALID_DEVICE_REQUEST;
         break;
     }
 
     WdfRequestComplete(Request, status);
+
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: IOCTL request completed with status: %X\n", status));
     return status;
 }
 
