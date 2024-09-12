@@ -1,4 +1,5 @@
 #include "UserModeCommunication.h"
+#include "WfpFilters.h"
 
 WDFTIMER timer;
 WDFDEVICE device;
@@ -7,7 +8,7 @@ PVOID sharedMemory = NULL;
 HANDLE sharedMemorySectionHandle = NULL;
 HANDLE hEvent = NULL;
 
-BOOLEAN isSharedMemoryCreated;
+BOOLEAN isPacketLoggingEnabled;
 
 NTSTATUS CreateSharedMemoryAndEvent()
 {
@@ -88,6 +89,10 @@ VOID CleanupResources()
         }
         hEvent = NULL;
     }
+
+    // Delete logging filter
+    GUID filterKey = LOG_INBOUND_PACKETS_FILTER_GUID;
+    RemoveFilter(&filterKey);
 }
 
 VOID TimerCallback(
@@ -99,7 +104,7 @@ VOID TimerCallback(
     // Call cleanup function
     CleanupResources();
 
-    isSharedMemoryCreated = FALSE;
+    isPacketLoggingEnabled = FALSE;
 }
 
 NTSTATUS CreateTimer()

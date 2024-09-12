@@ -17,7 +17,7 @@ typedef struct _PACKET_INFO
     BYTE packetData[256]; // Part of the packet data (first 256 bytes for example)
 } PACKET_INFO, * PPACKET_INFO;
 
-extern BOOLEAN isSharedMemoryCreated;
+extern BOOLEAN isPacketLoggingEnabled;
 
 extern WDFTIMER timer;
 extern WDFDEVICE device;

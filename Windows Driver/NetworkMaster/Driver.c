@@ -49,13 +49,6 @@ DriverEntry(
         return status;
     }
 
-    //// Create a callout
-    //status = CreateCallout(DriverObject->DeviceObject, &FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, NULL, NULL, NULL, L"NetworkMaster Callout", NULL);
-    //if (!NT_SUCCESS(status)) {
-    //    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateCallout failed with status %X\n", status));
-    //    return status;
-    //}
-
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: DriverEntry - End\n"));
 
     return status;
@@ -73,6 +66,7 @@ NetworkMasterEvtDeviceAdd(
     WDFDEVICE hDevice;
     WDF_IO_QUEUE_CONFIG ioQueueConfig;
     WDF_OBJECT_ATTRIBUTES ioQueueAttributes;
+    PDEVICE_OBJECT pDeviceObject;
     DECLARE_CONST_UNICODE_STRING(symbolicLinkName, DOS_DEVICE_NAME);
 
     // Debugging info: Start of EvtDeviceAdd
@@ -111,7 +105,28 @@ NetworkMasterEvtDeviceAdd(
         return status;
     }
 
-    isSharedMemoryCreated = FALSE;
+    isPacketLoggingEnabled = FALSE;
+
+    // Obtain the underlying WDM device object
+    pDeviceObject = WdfDeviceWdmGetDeviceObject(hDevice);
+
+    GUID loggingPacketsCalloutKey = LOGGING_PACKETS_CALLOUT_GUID;
+
+    // Create a callout
+    status = CreateCallout(
+        pDeviceObject,
+        &loggingPacketsCalloutKey,
+        &FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
+        LoggingPacketsClassifyFn,
+        NULL,
+        NULL,
+        L"NetworkMaster Callout: Logging Packets",
+        L"The callout driver that writes the received packets to the shared memory space shared with user-mode"
+    );
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateCallout failed with status %X\n", status));
+        return status;
+    }
 
     // Debugging info: End of EvtDeviceAdd
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: EvtDeviceAdd - End\n"));
@@ -128,9 +143,8 @@ VOID WfpCleanup()
     if (engineHandle) {
         RemoveAllFilters();
 
-        /*FwpmCalloutDeleteByKey0(engineHandle, &calloutKey);
-        FwpsCalloutUnregisterByKey0(&calloutKey);
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed and unregistered the callout"));*/
+        GUID loggingCalloutKey = LOGGING_PACKETS_CALLOUT_GUID;
+        RemoveCallout(&loggingCalloutKey);
 
         FwpmSubLayerDeleteByKey(engineHandle, &inboundSubLayerKey);
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed inbound subLayer\n"));
@@ -218,6 +232,7 @@ NetworkMasterEvtIoDeviceControl(
         break;
     //case IOCTL_ADD_FILTER:
     //    // Handle adding a filter
+    //    // Make sure to return to the user the index of the added filter's guid, it will be: filterCount - 1
     //    // Parse the input buffer to get the filter parameters
     //    status = AddFilterFromBuffer(Request);
     //    break;

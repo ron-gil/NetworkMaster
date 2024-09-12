@@ -6,7 +6,7 @@ GUID inboundSubLayerKey;
 
 // Array to store the filter GUIDs
 GUID filterGuids[MAX_FILTERS];
-UINT16 filterCount;
+UINT16 filterCount = 0;
 
 BOOL IsGuidZero(const GUID* guid) {
     if (guid->Data1 == 0 &&
@@ -32,6 +32,8 @@ VOID RemoveAllFilters() {
         }
     }
 
+    filterCount = 0;
+
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed all filters\n"));
 }
 
@@ -45,6 +47,19 @@ NTSTATUS RemoveFilter(GUID* filterGuid) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Successfully deleted filter with GUID "GUID_FORMAT"\n", GUID_ARG(*filterGuid)));
         // Zero out the guid to signal no longer viable for use
         ZeroGuid(filterGuid);
+    }
+    return status;
+}
+
+NTSTATUS RemoveFilterByIndex(UINT16 index) {
+    NTSTATUS status;
+    if (index < 0 || index >= MAX_FILTERS) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed to delete filter: Invalid index given\n"));
+    }
+    status = RemoveFilter(&filterGuids[index]);
+    // Only decrease count of current filters if successfuly deleted the filter
+    if (NT_SUCCESS(status)) {
+        filterCount--;
     }
     return status;
 }
@@ -74,9 +89,14 @@ NTSTATUS CreateFilter(
     else {
         filterKey = *definedFilterKey;
     }
-
     if (!NT_SUCCESS(status)) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateFilter failed calling GenerateGUID with status %X\n", status));
+        return status;
+    }
+
+    status = SaveFilterGuid(&filterKey);
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateFilter failed saving filter guid with status %X\n", status));
         return status;
     }
 
@@ -114,14 +134,6 @@ NTSTATUS CreateFilter(
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: FwpmFilterAdd0 failed with status %X\n", status));
         return status;
     }
-
-    if (filterCount >= MAX_FILTERS) {
-        status = STATUS_UNSUCCESSFUL;
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Adding filter failed - Max filters reached\n"));
-        return status;
-    }
-
-    filterGuids[filterCount++] = filterKey;
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Added filter\n"));
 
@@ -196,4 +208,23 @@ NTSTATUS FindFilterKeyByName(wchar_t* name, GUID* placeholderKey) {
     // Free memory
     FwpmFreeMemory0(filters);
     return STATUS_SUCCESS;
+}
+
+NTSTATUS SaveFilterGuid(const GUID* guid) {
+    // Check if there's room for another filter
+    if (filterCount >= MAX_FILTERS) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Adding filter failed - Max filters reached\n"));
+        return STATUS_UNSUCCESSFUL;
+    }
+    // Save the filter by going over the array and looking for an empty space
+    for (UINT16 i = 0; i < MAX_FILTERS; i++)
+    {
+        if (IsGuidZero(&filterGuids[i])) {
+            filterGuids[i] = *guid;
+            filterCount++;
+            return STATUS_SUCCESS;
+        }
+    }
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Adding filter failed - Failed to find empty space in guid array\n"));
+    return STATUS_UNSUCCESSFUL;
 }

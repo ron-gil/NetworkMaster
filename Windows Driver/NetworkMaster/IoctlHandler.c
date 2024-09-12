@@ -2,20 +2,42 @@
 #include "IoctlHandler.h"
 #include "Driver.h"
 #include "WfpFilters.h"
-
+#include "WfpCallout.h"
 
 
 NTSTATUS InitPacketLogging() {
     NTSTATUS status = STATUS_SUCCESS;
     // Create shared memory
-    if (! isSharedMemoryCreated) {
+    if (! isPacketLoggingEnabled) {
         status = CreateSharedMemoryAndEvent();
         if (!NT_SUCCESS(status)) {
             KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: InitPacketLogging failed with status %X\n", status));
             return status;
         }
-        isSharedMemoryCreated = TRUE;
+
+        GUID filterKey = LOG_INBOUND_PACKETS_FILTER_GUID;
+        GUID layerKey = FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4;
+        GUID calloutKey = LOGGING_PACKETS_CALLOUT_GUID;
+        // Activate the packet logging using a filter
+        status = CreateFilter(
+            &filterKey,
+            &layerKey,
+            FWP_ACTION_CALLOUT_INSPECTION,
+            &calloutKey,
+            &inboundSubLayerKey,
+            0,
+            NULL,
+            LOG_INBOUND_PACKETS_FILTER_NAME,
+            L"A filter to log all packets that are inbound"
+        );
+        if (!NT_SUCCESS(status)) {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: InitPacketLogging failed to create a filter with status %X\n", status));
+            return status;
+        }
+
+        isPacketLoggingEnabled = TRUE;
     }
+
     // Update the shared memory cleaning timer to expire after CLEANUP_TIMEOUT milliseconds
     BOOLEAN isTimerUpdated = WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(CLEANUP_TIMEOUT));
     if (isTimerUpdated) {
