@@ -79,7 +79,7 @@ def send_ioctl(handle, ioctl_code):
     )
 
     if not success:
-        print("IOCTL failed. Error:", ctypes.GetLastError())
+        print("IOCTL failed. Error status_code:", out_buffer)
     else:
         print("IOCTL succeeded, bytes returned:", bytes_returned.value)
 

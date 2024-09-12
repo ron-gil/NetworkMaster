@@ -114,12 +114,14 @@
   <ItemGroup>
     <ClCompile Include="Driver.c" />
     <ClCompile Include="IoctlHandler.c" />
+    <ClCompile Include="UserModeCommunication.c" />
     <ClCompile Include="WfpCallout.c" />
     <ClCompile Include="WfpFilters.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Driver.h" />
     <ClInclude Include="IoctlHandler.h" />
+    <ClInclude Include="UserModeCommunication.h" />
     <ClInclude Include="WfpCallout.h" />
     <ClInclude Include="WfpFilters.h" />
   </ItemGroup>

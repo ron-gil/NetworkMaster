@@ -1,8 +1,35 @@
+#include "UserModeCommunication.h"
 #include "IoctlHandler.h"
 #include "Driver.h"
 #include "WfpFilters.h"
 
-//
+
+
+NTSTATUS InitPacketLogging() {
+    NTSTATUS status = STATUS_SUCCESS;
+    // Create shared memory
+    if (! isSharedMemoryCreated) {
+        status = CreateSharedMemoryAndEvent();
+        if (!NT_SUCCESS(status)) {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: InitPacketLogging failed with status %X\n", status));
+            return status;
+        }
+        isSharedMemoryCreated = TRUE;
+    }
+    // Update the shared memory cleaning timer to expire after CLEANUP_TIMEOUT milliseconds
+    BOOLEAN isTimerUpdated = WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(CLEANUP_TIMEOUT));
+    if (isTimerUpdated) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Clean up timer has been reset\n"));
+    }
+    else
+    {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Clean up timer has been started\n"));
+    }
+
+    return status;
+}
+
+
 //// Function to handle adding a filter from the input buffer
 //NTSTATUS AddFilterFromBuffer(_In_ WDFREQUEST Request)
 //{

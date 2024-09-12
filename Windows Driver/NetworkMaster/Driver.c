@@ -1,3 +1,4 @@
+#include "UserModeCommunication.h"
 #include "Driver.h"
 #include "WfpCallout.h"
 #include "WfpFilters.h"
@@ -103,6 +104,15 @@ NetworkMasterEvtDeviceAdd(
         return status;
     }
 
+    // Create a timer to clean up the user-mode communications resources when it is finished
+    status = CreateTimer();
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed to create timer.\n"));
+        return status;
+    }
+
+    isSharedMemoryCreated = FALSE;
+
     // Debugging info: End of EvtDeviceAdd
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: EvtDeviceAdd - End\n"));
 
@@ -131,6 +141,12 @@ VOID WfpCleanup()
         FwpmEngineClose(engineHandle);
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: WfpEngineClosed\n"));
     }
+
+    // Stopping the clean up timer if it is active
+    WdfTimerStop(timer, FALSE);
+
+    // Cleaning up the resources related to user-mode communications if they haven't been released
+    CleanupResources();
 
     // Debugging info: WfpCleanup finished
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: WfpCleanup - End\n"));
@@ -163,15 +179,43 @@ NetworkMasterEvtIoDeviceControl(
 )
 {
     NTSTATUS status = STATUS_SUCCESS;
-    //PVOID buffer = NULL;
+    /*NTSTATUS* outBuffer = NULL;
+    size_t bufferSize = 0;*/
 
     UNREFERENCED_PARAMETER(Queue);
-    UNREFERENCED_PARAMETER(OutputBufferLength);
     UNREFERENCED_PARAMETER(InputBufferLength);
+    UNREFERENCED_PARAMETER(OutputBufferLength);
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Received IOCTL Code: %X\n", IoControlCode));
+    
+    //// Check if the output buffer length is sufficient for an NTSTATUS
+    //if (OutputBufferLength < sizeof(NTSTATUS)) {
+    //    status = STATUS_BUFFER_TOO_SMALL;
+    //    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Buffer OutputBuffer size set is too small\n"));
+    //    WdfRequestComplete(Request, status);
+    //    return status;
+    //}
+
+    //// Retrieve the output buffer
+    //status = WdfRequestRetrieveOutputBuffer(Request, sizeof(NTSTATUS), (PVOID*)&outBuffer, &bufferSize);
+    //if (!NT_SUCCESS(status)) {
+    //    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to retrieve outputBuffer\n"));
+    //    WdfRequestComplete(Request, status);
+    //    return status;
+    //}
 
     switch (IoControlCode) {
+    case IOCTL_INIT_PACKET_LOGGING:
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Handling IOCTL_INIT_PACKET_LOGGING\n"));
+        // Init packet logging
+        status = InitPacketLogging();
+        if (NT_SUCCESS(status)) {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Successfully initalized packet logging.\n"));
+        }
+        else {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to initialize packet logging. Status: %X\n", status));
+        }
+        break;
     //case IOCTL_ADD_FILTER:
     //    // Handle adding a filter
     //    // Parse the input buffer to get the filter parameters
@@ -230,9 +274,11 @@ NetworkMasterEvtIoDeviceControl(
         break;
     }
 
+    // Complete the request and return the status
     WdfRequestComplete(Request, status);
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: IOCTL request completed with status: %X\n", status));
+   
     return status;
 }
 

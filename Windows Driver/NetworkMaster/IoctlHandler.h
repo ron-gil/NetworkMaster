@@ -19,7 +19,7 @@ typedef struct _PACKET_MODIFICATION_INFO {
     // Other fields...
 } PACKET_MODIFICATION_INFO, * PPACKET_MODIFICATION_INFO;
 
-//
+NTSTATUS InitPacketLogging();
 //NTSTATUS AddFilterFromBuffer(_In_ WDFREQUEST Request);
 //NTSTATUS RemoveFilterFromBuffer(_In_ WDFREQUEST Request);
 NTSTATUS StopInboundTraffic();

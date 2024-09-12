@@ -36,6 +36,9 @@
     <ClCompile Include="IoctlHandler.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="UserModeCommunication.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="WfpCallout.h">
@@ -48,6 +51,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="IoctlHandler.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="UserModeCommunication.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
