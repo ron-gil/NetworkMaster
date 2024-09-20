@@ -99,7 +99,7 @@ NetworkMasterEvtDeviceAdd(
     }
 
     // Create a timer to clean up the user-mode communications resources when it is finished
-    status = CreateTimer();
+    status = CreateTimer(hDevice);
     if (!NT_SUCCESS(status)) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed to create timer.\n"));
         return status;
@@ -118,7 +118,7 @@ NetworkMasterEvtDeviceAdd(
         &loggingPacketsCalloutKey,
         &FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
         LoggingPacketsClassifyFn,
-        NULL,
+        LoggingPacketsNotifyFn,
         NULL,
         L"NetworkMaster Callout: Logging Packets",
         L"The callout driver that writes the received packets to the shared memory space shared with user-mode"
@@ -157,11 +157,15 @@ VOID WfpCleanup()
     }
 
     // Stopping the clean up timer if it is active
-    WdfTimerStop(timer, FALSE);
+    if (timer != NULL && MmIsAddressValid(timer)) {
+        WdfTimerStop(timer, FALSE);
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Released Timer resources\n"));
+    }
 
     // Cleaning up the resources related to user-mode communications if they haven't been released
     CleanupResources();
-
+    isPacketLoggingEnabled = FALSE;
+    
     // Debugging info: WfpCleanup finished
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: WfpCleanup - End\n"));
 }
@@ -171,13 +175,13 @@ DriverUnload(
     _In_ PDRIVER_OBJECT DriverObject
 )
 {
+    UNREFERENCED_PARAMETER(DriverObject);
+    
     // Debugging info: DriverUnload called
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: DriverUnload - Start\n"));
 
     // Clean up WFP resources
     WfpCleanup();
-
-    UNREFERENCED_PARAMETER(DriverObject);
 
     // Debugging info: DriverUnload finished
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: DriverUnload - End\n"));

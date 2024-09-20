@@ -5,17 +5,8 @@
 
 #define CLEANUP_TIMEOUT 10000 // Timeout in milliseconds (e.g., 10 seconds)
 #define SHARED_MEMORY_SIZE 4096  // Size of the shared memory
-
-typedef struct _PACKET_INFO
-{
-    UINT32 srcIP;         // Source IP address (IPv4)
-    UINT32 destIP;        // Destination IP address (IPv4)
-    UINT16 srcPort;       // Source port number
-    UINT16 destPort;      // Destination port number
-    UINT32 protocol;      // Protocol (TCP, UDP, ICMP, etc.)
-    UINT32 packetLength;  // Total packet length
-    BYTE packetData[256]; // Part of the packet data (first 256 bytes for example)
-} PACKET_INFO, * PPACKET_INFO;
+#define SHARED_MEMORY_NAME L"NetworkMasterPacketDump"
+#define PACKET_CAPTURE_EVENT_NAME L"PacketCaptureEvent"
 
 extern BOOLEAN isPacketLoggingEnabled;
 
@@ -28,10 +19,10 @@ extern HANDLE hEvent;
 
 NTSTATUS CreateSharedMemoryAndEvent(VOID);
 
-VOID ProcessCapturedPacket(_In_ PACKET_INFO packet);
+VOID ProcessCapturedPacket(_In_ const BYTE* packetData, _In_ SIZE_T packetSize);
 
 VOID CleanupResources(VOID);
 
 VOID TimerCallback(_In_ WDFTIMER Timer);
 
-NTSTATUS CreateTimer(VOID);
+NTSTATUS CreateTimer(WDFDEVICE hDevice);

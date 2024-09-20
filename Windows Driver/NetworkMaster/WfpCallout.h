@@ -32,3 +32,14 @@ LoggingPacketsClassifyFn(
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut
 );
+
+SIZE_T GetPacketSize(const NET_BUFFER_LIST* nbl);
+
+const BYTE* GetPacketData(const NET_BUFFER_LIST* nbl, SIZE_T* packetSize);
+
+
+NTSTATUS LoggingPacketsNotifyFn(
+    FWPS_CALLOUT_NOTIFY_TYPE notifyType,
+    const GUID* filterKey,
+    const FWPS_FILTER3* filter
+);

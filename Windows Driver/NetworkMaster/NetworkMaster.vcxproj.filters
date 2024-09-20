@@ -56,5 +56,8 @@
     <ClInclude Include="UserModeCommunication.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="PacketHeaders.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

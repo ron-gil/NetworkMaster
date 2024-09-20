@@ -16,7 +16,7 @@ NTSTATUS InitPacketLogging() {
         }
 
         GUID filterKey = LOG_INBOUND_PACKETS_FILTER_GUID;
-        GUID layerKey = FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4;
+        GUID layerKey = FWPM_LAYER_INBOUND_MAC_FRAME_ETHERNET;
         GUID calloutKey = LOGGING_PACKETS_CALLOUT_GUID;
         // Activate the packet logging using a filter
         status = CreateFilter(

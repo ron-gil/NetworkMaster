@@ -1,6 +1,6 @@
+#include "UserModeCommunication.h"
 #include "WfpCallout.h"
 #include "Driver.h"
-
 
 NTSTATUS CreateCallout(
     void* deviceObject,             
@@ -59,6 +59,7 @@ NTSTATUS CreateCallout(
         return status;
     }
 
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Added callout\n"));
     return status;
 }
 
@@ -76,12 +77,10 @@ NTSTATUS RemoveCallout(const GUID* calloutKey) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "FwpsCalloutUnregisterByKey0 failed with status %X\n", status));
         return status;
     }
-    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed and unregistered the callout"));
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed and unregistered the callout\n"));
     return status;
 }
-
-VOID NTAPI
-LoggingPacketsClassifyFn(
+VOID NTAPI LoggingPacketsClassifyFn(
     const FWPS_INCOMING_VALUES* inFixedValues,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
     VOID* layerData,
@@ -89,45 +88,121 @@ LoggingPacketsClassifyFn(
     const FWPS_FILTER* filter,
     UINT64 flowContext,
     FWPS_CLASSIFY_OUT* classifyOut
-)
-{
+) {
     UNREFERENCED_PARAMETER(classifyContext);
     UNREFERENCED_PARAMETER(flowContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(inMetaValues);
+    UNREFERENCED_PARAMETER(inFixedValues);
+
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Classify function called for a new packet\n"));
+
+    // Allow the packet to pass
+    classifyOut->actionType = FWP_ACTION_PERMIT;
 
     if (layerData != NULL) {
-        // Extract packet info (for TCP/IP packets)
-        // Assume we're capturing at the FWPM_LAYER_INBOUND_TRANSPORT_V4 layer
+        // Cast layerData to NET_BUFFER_LIST
+        const NET_BUFFER_LIST* netBufferList = (const NET_BUFFER_LIST*)layerData;
 
-        const FWPS_INCOMING_VALUES* incomingValues = inFixedValues;
-        FWPS_PACKET_INJECTION_STATE packetState;
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Extracting packet data from NET_BUFFER_LIST\n"));
 
-        // Example code to extract packet details
-        if (incomingValues->layerId == FWPS_LAYER_INBOUND_TRANSPORT_V4)
-        {
-            const NET_BUFFER_LIST* netBufferList = (const NET_BUFFER_LIST*)layerData;
-            // Parse the packet data to get the source IP, destination IP, etc.
-            PACKET_INFO packetInfo = { 0 };
+        // Calculate the size of the packet data
+        SIZE_T packetSize = 0;
+        const BYTE* packetData = GetPacketData(netBufferList, &packetSize);
 
-            // Fill packetInfo with actual data from netBufferList
-            // This is where you would parse the headers and extract useful information
-            packetInfo.srcIP = ...;    // Extracted source IP
-            packetInfo.destIP = ...;   // Extracted destination IP
-            packetInfo.srcPort = ...;  // Extracted source port
-            packetInfo.destPort = ...; // Extracted destination port
-            packetInfo.protocol = ...; // Protocol (TCP, UDP, etc.)
-            packetInfo.packetLength = ...; // Packet length
-            RtlCopyMemory(packetInfo.packetData, ..., 256); // Copy part of the packet data
+        if (packetData != NULL) {
+            // Process the captured packet by sending it to the user-mode application
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Packet captured, size: %Iu bytes\n", packetSize));
+            ProcessCapturedPacket(packetData, packetSize);
 
-            // Process the captured packet
-            ProcessCapturedPacket(packetInfo);
+            // Free the allocated memory for packet data
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Freeing memory allocated for packet data\n"));
+            ExFreePoolWithTag((VOID*)packetData, 'pktd');
+        }
+        else {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to extract packet data\n"));
+        }
+    }
+    else {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: No layer data available\n"));
+    }
+}
+
+SIZE_T GetPacketSize(const NET_BUFFER_LIST* nbl) {
+    SIZE_T packetSize = 0;
+
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Calculating packet size\n"));
+
+    if (nbl != NULL) {
+        const NET_BUFFER* nb = NET_BUFFER_LIST_FIRST_NB(nbl);
+        while (nb != NULL) {
+            ULONG dataLength = NET_BUFFER_DATA_LENGTH(nb);
+            packetSize += dataLength;
+            nb = NET_BUFFER_NEXT_NB(nb);
         }
     }
 
-    // Allow the packet to pass (since we're only capturing and not blocking here)
-    classifyOut->actionType = FWP_ACTION_PERMIT;
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Packet size calculated: %Iu bytes\n", packetSize));
+    return packetSize;
 }
 
+const BYTE* GetPacketData(const NET_BUFFER_LIST* nbl, SIZE_T* packetSize) {
+    if (nbl == NULL) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: NET_BUFFER_LIST is NULL\n"));
+        if (packetSize != NULL) *packetSize = 0;
+        return NULL;
+    }
 
-/*
+    // Calculate the total packet size
+    *packetSize = GetPacketSize(nbl);
 
-*/
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Allocating memory for packet data\n"));
+
+    // Allocate memory for the packet data
+    BYTE* packetData = ExAllocatePool2(NonPagedPool, *packetSize, 'pktd');
+    if (packetData == NULL) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to allocate memory for packet data\n"));
+        *packetSize = 0;
+        return NULL;
+    }
+
+    // Copy the data from NET_BUFFER_LIST to packetData
+    BYTE* dst = packetData;
+    const NET_BUFFER* nb = NET_BUFFER_LIST_FIRST_NB(nbl);
+    while (nb != NULL) {
+        ULONG dataLength = NET_BUFFER_DATA_LENGTH(nb);
+        ULONG mdlOffset = NET_BUFFER_DATA_OFFSET(nb);
+        MDL* mdl = NET_BUFFER_FIRST_MDL(nb);
+
+        BYTE* src = MmGetSystemAddressForMdlSafe(mdl, NormalPagePriority);
+        if (src == NULL) {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to get system address for MDL\n"));
+            ExFreePoolWithTag(packetData, 'pktd');
+            return NULL;
+        }
+
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Copying %u bytes from MDL to packet data buffer\n", dataLength));
+        RtlCopyMemory(dst, src + mdlOffset, dataLength);
+        dst += dataLength;
+
+        nb = NET_BUFFER_NEXT_NB(nb);
+    }
+
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Packet data successfully extracted\n"));
+    return packetData;
+}
+
+NTSTATUS LoggingPacketsNotifyFn(
+    FWPS_CALLOUT_NOTIFY_TYPE notifyType,
+    const GUID* filterKey,
+    const FWPS_FILTER3* filter
+)
+{
+    UNREFERENCED_PARAMETER(notifyType);
+    UNREFERENCED_PARAMETER(filterKey);
+    UNREFERENCED_PARAMETER(filter);
+
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Callout notify function triggered.\n"));
+
+    return STATUS_SUCCESS;
+}

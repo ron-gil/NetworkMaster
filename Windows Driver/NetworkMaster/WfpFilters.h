@@ -42,6 +42,7 @@ NTSTATUS FindFilterKeyByName(wchar_t* name, GUID* placeholderKey);
 
 VOID ZeroGuid(GUID* guid);
 BOOL IsGuidZero(const GUID* guid);
+NTSTATUS SaveFilterGuid(const GUID* guid);
 
 NTSTATUS CreateFilter(
     const GUID* definedFilterKey,

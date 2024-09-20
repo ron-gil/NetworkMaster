@@ -1,94 +1,40 @@
-import ctypes
-from ctypes import wintypes
-
-# ioctl codes
-IOCTL_STOP_INBOUND_TRAFFIC = 0x222008  # CTL_CODE(0x00000022, 0x802, 0x0, 0x0)
-IOCTL_START_INBOUND_TRAFFIC = 0x222010  # CTL_CODE(0x00000022, 0x804, 0x0, 0x0)
-
-INVALID_HANDLE_VALUE = -1
-
-# Define constants
-GENERIC_READ = 0x80000000
-GENERIC_WRITE = 0x40000000
-OPEN_EXISTING = 3
-
-# Load Kernel32 DLL
-kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+import threading
+import ioctl_handler as ioctl
+import shared_memory_handler as smh
 
 
-def CTL_CODE(DeviceType, Function, Method, Access):
-    return hex(((DeviceType) << 16) | ((Access) << 14) | ((Function) << 2) | (Method))
+def init_driver_connection():
+    # Open shared memory
+    shared_mem = smh.open_shared_memory()
+    if not shared_mem:
+        print("Error:", "Failed to init driver connection")
+        return
 
+    # Open the kernel event to know when a new packet arrived
+    event_handle = smh.open_event()
+    if event_handle:
+        # Start a thread to wait for packets
+        packet_thread = threading.Thread(
+            target=smh.wait_for_packet, args=(event_handle,)
+        )
+        connection_thread.daemon = True
+        packet_thread.start()
 
-def open_device():
-    kernel32.CreateFileW.argtypes = [
-        wintypes.LPCWSTR,  # lpFileName
-        wintypes.DWORD,  # dwDesiredAccess
-        wintypes.DWORD,  # dwShareMode
-        wintypes.LPVOID,  # lpSecurityAttributes
-        wintypes.DWORD,  # dwCreationDisposition
-        wintypes.DWORD,  # dwFlagsAndAttributes
-        wintypes.HANDLE,  # hTemplateFile
-    ]
-    kernel32.CreateFileW.restype = wintypes.HANDLE
+    # Start the thread to keep the connection alive
+    connection_thread = threading.Thread(target=smh.keep_connection_alive)
+    connection_thread.daemon = True
+    connection_thread.start()
 
-    handle = kernel32.CreateFileW(
-        r"\\.\NetworkMaster",
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        None,
-        OPEN_EXISTING,
-        0,
-        None,
-    )
-
-    if handle == INVALID_HANDLE_VALUE:
-        print("Failed to open device. Error:", ctypes.GetLastError())
-        return None
-    return handle
-
-
-def send_ioctl(handle, ioctl_code):
-    kernel32.DeviceIoControl.argtypes = [
-        wintypes.HANDLE,  # hDevice
-        wintypes.DWORD,  # dwIoControlCode
-        wintypes.LPVOID,  # lpInBuffer
-        wintypes.DWORD,  # nInBufferSize
-        wintypes.LPVOID,  # lpOutBuffer
-        wintypes.DWORD,  # nOutBufferSize
-        ctypes.POINTER(wintypes.DWORD),  # lpBytesReturned
-        wintypes.LPVOID,  # lpOverlapped
-    ]
-    kernel32.DeviceIoControl.restype = wintypes.BOOL
-
-    # Create buffers
-    in_buffer = ctypes.create_string_buffer(0)  # Empty buffer with size 0
-    out_buffer = ctypes.create_string_buffer(1024)  # Adjust size as needed
-    bytes_returned = wintypes.DWORD()
-
-    # Send IOCTL
-    success = kernel32.DeviceIoControl(
-        handle,
-        ioctl_code,
-        ctypes.byref(in_buffer),
-        ctypes.sizeof(in_buffer),
-        ctypes.byref(out_buffer),
-        ctypes.sizeof(out_buffer),
-        ctypes.byref(bytes_returned),
-        None,
-    )
-
-    if not success:
-        print("IOCTL failed. Error status_code:", out_buffer)
-    else:
-        print("IOCTL succeeded, bytes returned:", bytes_returned.value)
+    print("Driver connection initialized and threads started.")
 
 
 def main():
-    handle = open_device()
+    handle = ioctl.open_device()
 
     if handle is None:
         return
+
+    init_driver_connection()
 
     while True:
         print("\nMenu:")
@@ -99,18 +45,23 @@ def main():
         choice = input("Enter your choice (1/2/3): ").strip()
 
         if choice == "1":
-            send_ioctl(handle, IOCTL_STOP_INBOUND_TRAFFIC)
+            ioctl.send_ioctl(handle, ioctl.IOCTL_STOP_INBOUND_TRAFFIC)
         elif choice == "2":
-            send_ioctl(handle, IOCTL_START_INBOUND_TRAFFIC)
+            ioctl.send_ioctl(handle, ioctl.IOCTL_START_INBOUND_TRAFFIC)
         elif choice == "3":
             break
         else:
             print("Invalid choice, please enter 1, 2, or 3.")
 
-    # Ensure handle is cast to the correct type before closing
-    if handle and handle != INVALID_HANDLE_VALUE:
-        kernel32.CloseHandle(ctypes.c_void_p(handle))
+    ioctl.close_device(handle)
 
 
 if __name__ == "__main__":
     main()
+
+"""
+use send_ioctl to call the init_packet_logging_ioctl,
+make a call to this ioctl in an infinite loop on a seperate thread every 15 minutes.
+wait for a kernel event and read the buffer every time there's one in an infinite loop on a seperate thread.
+display the packet read to the user.
+"""
