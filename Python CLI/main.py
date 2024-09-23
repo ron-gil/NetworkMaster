@@ -3,38 +3,41 @@ import ioctl_handler as ioctl
 import shared_memory_handler as smh
 
 
-def init_driver_connection():
-    # Open shared memory
-    shared_mem = smh.open_shared_memory()
-    if not shared_mem:
-        print("Error:", "Failed to init driver connection")
-        return
-
-    # Open the kernel event to know when a new packet arrived
-    event_handle = smh.open_event()
-    if event_handle:
-        # Start a thread to wait for packets
-        packet_thread = threading.Thread(
-            target=smh.wait_for_packet, args=(event_handle,)
-        )
-        connection_thread.daemon = True
-        packet_thread.start()
-
+def init_driver_connection(handle):
     # Start the thread to keep the connection alive
-    connection_thread = threading.Thread(target=smh.keep_connection_alive)
+    connection_thread = threading.Thread(
+        target=smh.keep_connection_alive, args=(handle,)
+    )
     connection_thread.daemon = True
     connection_thread.start()
 
+    # Open shared memory
+    shared_mem = smh.open_shared_memory()
+    if not shared_mem:
+        return False
+
+    # Open the kernel event to know when a new packet arrived
+    event_handle = smh.open_event()
+    if not event_handle:
+        return False
+    # Start a thread to wait for packets
+    packet_thread = threading.Thread(target=smh.wait_for_packet, args=(event_handle,))
+    packet_thread.daemon = True
+    packet_thread.start()
+
     print("Driver connection initialized and threads started.")
+    return True
 
 
 def main():
     handle = ioctl.open_device()
 
     if handle is None:
-        return
+        return 1
 
-    init_driver_connection()
+    if not init_driver_connection(handle):
+        print("Error occurred initializing driver connection")
+        return 1
 
     while True:
         print("\nMenu:")
@@ -54,6 +57,7 @@ def main():
             print("Invalid choice, please enter 1, 2, or 3.")
 
     ioctl.close_device(handle)
+    return 0
 
 
 if __name__ == "__main__":

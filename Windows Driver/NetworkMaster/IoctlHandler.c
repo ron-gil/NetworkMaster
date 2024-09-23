@@ -16,7 +16,7 @@ NTSTATUS InitPacketLogging() {
         }
 
         GUID filterKey = LOG_INBOUND_PACKETS_FILTER_GUID;
-        GUID layerKey = FWPM_LAYER_INBOUND_MAC_FRAME_ETHERNET;
+        GUID layerKey = FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4;
         GUID calloutKey = LOGGING_PACKETS_CALLOUT_GUID;
         // Activate the packet logging using a filter
         status = CreateFilter(
@@ -28,7 +28,8 @@ NTSTATUS InitPacketLogging() {
             0,
             NULL,
             LOG_INBOUND_PACKETS_FILTER_NAME,
-            L"A filter to log all packets that are inbound"
+            L"A filter to log all packets that are inbound",
+            &loggingPacketsFilterIndex
         );
         if (!NT_SUCCESS(status)) {
             KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: InitPacketLogging failed to create a filter with status %X\n", status));
@@ -125,7 +126,8 @@ NTSTATUS StopInboundTraffic()
         0,      // No conditions, block all packets
         NULL,
         STOP_INBOUND_FILTER_NAME,               // Filter name
-        description         // Filter description
+        description,         // Filter description
+        &stopInboundFilterIndex
     );
     if (!NT_SUCCESS(status)) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateFilter failed with status %X\n", status));
@@ -148,8 +150,7 @@ NTSTATUS StopInboundTraffic()
 // Function to start allowing inbound traffic
 NTSTATUS StartInboundTraffic()
 {
-    GUID filterGuid = STOP_INBOUND_FILTER_GUID;
-    NTSTATUS status = RemoveFilter(&filterGuid);
+    NTSTATUS status = RemoveFilterByIndex(stopInboundFilterIndex);
 
     return status;
 }

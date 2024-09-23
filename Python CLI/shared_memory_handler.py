@@ -5,44 +5,77 @@ import win32event
 import pywintypes
 import ioctl_handler as ioctl
 import packet_handler as ph
+import ctypes
+from ctypes import wintypes
+
+# Load Kernel32 DLL
+kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 SHARED_MEMORY_SIZE = 4096
 SHARED_MEMORY_NAME = "NetworkMasterPacketDump"
 PACKET_CAPTURE_EVENT_NAME = "PacketCaptureEvent"
 
+# Define constants
+PAGE_READWRITE = 0x04
+FILE_MAP_READ = 0x04
+EVENT_ALL_ACCESS = 0x1F0003
+INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
+
+
 def open_shared_memory():
-    try:
-        # Open a handle to the named shared memory object
-        hFileMap = win32file.CreateFileMapping(
-            win32file.INVALID_HANDLE_VALUE,
-            None,
-            win32file.PAGE_READWRITE,
-            0,
-            SHARED_MEMORY_SIZE,
-            SHARED_MEMORY_NAME,
-        )
+    # Define function argument and return types for OpenFileMappingW
+    kernel32.OpenFileMappingW.argtypes = [
+        wintypes.DWORD,
+        wintypes.BOOL,
+        wintypes.LPCWSTR,
+    ]
+    kernel32.OpenFileMappingW.restype = wintypes.HANDLE
 
-        # Map the file into the memory space
-        shared_mem = mmap.mmap(hFileMap, 0, access=mmap.ACCESS_READ)
+    kernel32.MapViewOfFile.argtypes = [
+        wintypes.HANDLE,  # hFileMappingObject
+        wintypes.DWORD,  # dwDesiredAccess
+        wintypes.DWORD,  # dwFileOffsetHigh
+        wintypes.DWORD,  # dwFileOffsetLow
+        ctypes.c_size_t,  # dwNumberOfBytesToMap
+    ]
+    kernel32.MapViewOfFile.restype = wintypes.LPVOID
 
-        print("Shared memory opened successfully.")
-        return shared_mem
-    except pywintypes.error as e:
-        print(f"Error opening shared memory: {e}")
+    # Open the existing shared memory object
+    hFileMap = kernel32.OpenFileMappingW(
+        FILE_MAP_READ,  # Desired access (read-only in this case)
+        False,  # Inherit handle
+        SHARED_MEMORY_NAME,  # Name of the shared memory object
+    )
+
+    if not hFileMap or hFileMap == INVALID_HANDLE_VALUE:
+        print("Failed to create or open shared memory. Error:", ctypes.GetLastError())
         return None
+
+    # Map view of the file to get a pointer to the shared memory
+    pBuffer = kernel32.MapViewOfFile(hFileMap, FILE_MAP_READ, 0, 0, 0)
+
+    if not pBuffer:
+        print("Failed to map view of shared memory. Error:", ctypes.GetLastError())
+        kernel32.CloseHandle(hFileMap)
+        return None
+
+    return pBuffer
 
 
 def open_event():
-    try:
-        # Open the event created by the driver
-        event_handle = win32event.OpenEvent(
-            win32event.EVENT_ALL_ACCESS, False, f"Global\\{PACKET_CAPTURE_EVENT_NAME}"
-        )
-        print("Event opened successfully.")
-        return event_handle
-    except pywintypes.error as e:
-        print(f"Error opening event: {e}")
+    # Define function argument and return types
+    kernel32.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel32.OpenEventW.restype = wintypes.HANDLE
+
+    # Try to open the event created by the driver
+    hEvent = kernel32.OpenEventW(EVENT_ALL_ACCESS, False, PACKET_CAPTURE_EVENT_NAME)
+
+    if not hEvent or hEvent == INVALID_HANDLE_VALUE:
+        print(f"Failed to open event. Error: {ctypes.get_last_error()}")
         return None
+
+    print("Event opened successfully.")
+    return hEvent
 
 
 def wait_for_packet(event_handle):
@@ -66,18 +99,20 @@ def read_received_packet(shared_mem):
     try:
         # Read packet data from shared memory
         shared_mem.seek(0)  # Move to the start
-        packet_data = shared_mem.read(SHARED_MEMORY_SIZE)  # Adjust based on max packet size
+        packet_data = shared_mem.read(
+            SHARED_MEMORY_SIZE
+        )  # Adjust based on max packet size
         return packet_data
     except Exception as e:
         print(f"Error reading packet: {e}")
         return None
 
 
-def keep_connection_alive():
+def keep_connection_alive(handle):
     while True:
         try:
             # Call the IOCTL to keep the connection alive
-            ioctl.send_ioctl(ioctl.IOCTL_INIT_PACKET_LOGGING)
+            ioctl.send_ioctl(handle, ioctl.IOCTL_INIT_PACKET_LOGGING)
             print("Sent IOCTL to init packet logging.")
         except Exception as e:
             print(f"Error in keep_connection_alive: {e}")

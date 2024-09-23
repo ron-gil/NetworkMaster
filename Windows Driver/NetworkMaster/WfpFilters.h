@@ -5,6 +5,7 @@
 // {B872359B-C1B7-4AFA-B312-A6628C64D4B4}
 DEFINE_GUID(STOP_INBOUND_FILTER_GUID,
     0xb872359b, 0xc1b7, 0x4afa, 0xb3, 0x12, 0xa6, 0x62, 0x8c, 0x64, 0xd4, 0xb4);
+extern UINT16 stopInboundFilterIndex;
 
 #define LOG_INBOUND_PACKETS_FILTER_NAME L"Log Inbound Packets"
 // {5D8DF53A-D1F2-4446-9C8E-1AE524896C4E}
@@ -28,21 +29,16 @@ extern GUID inboundSubLayerKey;
 extern GUID filterGuids[MAX_FILTERS];
 extern UINT16 filterCount;
 
-typedef struct _FILTER_INFO {
-    // Add relevant fields for your filter information (e.g., layer, conditions, actions, etc.)
-    GUID filterGuid;
-    // Other fields...
-} FILTER_INFO, * PFILTER_INFO;
-
 
 VOID RemoveAllFilters();
 NTSTATUS RemoveFilter(GUID* filterGuid);
+NTSTATUS RemoveFilterByIndex(UINT16 index);
 
 NTSTATUS FindFilterKeyByName(wchar_t* name, GUID* placeholderKey);
 
 VOID ZeroGuid(GUID* guid);
 BOOL IsGuidZero(const GUID* guid);
-NTSTATUS SaveFilterGuid(const GUID* guid);
+NTSTATUS SaveFilterGuid(const GUID* guid, UINT16* filterIndex);
 
 NTSTATUS CreateFilter(
     const GUID* definedFilterKey,
@@ -53,6 +49,7 @@ NTSTATUS CreateFilter(
     UINT32 numConditions,
     FWPM_FILTER_CONDITION0* conditions,
     wchar_t* name,
-    wchar_t* description
+    wchar_t* description,
+    UINT16* filterIndex
 );
 NTSTATUS CreateSubLayer(wchar_t* name, wchar_t* description, GUID* placeHolderKey);

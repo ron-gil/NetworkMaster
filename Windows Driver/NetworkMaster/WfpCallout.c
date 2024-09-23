@@ -80,6 +80,7 @@ NTSTATUS RemoveCallout(const GUID* calloutKey) {
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Removed and unregistered the callout\n"));
     return status;
 }
+
 VOID NTAPI LoggingPacketsClassifyFn(
     const FWPS_INCOMING_VALUES* inFixedValues,
     const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
@@ -155,6 +156,13 @@ const BYTE* GetPacketData(const NET_BUFFER_LIST* nbl, SIZE_T* packetSize) {
 
     // Calculate the total packet size
     *packetSize = GetPacketSize(nbl);
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Packet size calculated: %zu\n", *packetSize));
+
+    // Ensure packet size is valid before allocation
+    if (*packetSize == 0 || *packetSize > SHARED_MEMORY_SIZE) { // Define MAX_PACKET_SIZE as appropriate
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Invalid packet size: %zu\n", *packetSize));
+        return NULL;
+    }
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Allocating memory for packet data\n"));
 
@@ -198,11 +206,16 @@ NTSTATUS LoggingPacketsNotifyFn(
     const FWPS_FILTER3* filter
 )
 {
-    UNREFERENCED_PARAMETER(notifyType);
     UNREFERENCED_PARAMETER(filterKey);
     UNREFERENCED_PARAMETER(filter);
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Callout notify function triggered.\n"));
+    if (notifyType == FWPS_CALLOUT_NOTIFY_ADD_FILTER) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Filter is being added.\n"));
+    }
+    else if (notifyType == FWPS_CALLOUT_NOTIFY_DELETE_FILTER) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Filter is being deleted.\n"));
+    }
 
     return STATUS_SUCCESS;
 }

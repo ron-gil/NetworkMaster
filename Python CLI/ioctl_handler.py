@@ -88,6 +88,6 @@ def send_ioctl(handle, ioctl_code):
     )
 
     if not success:
-        print("IOCTL failed. Error status_code:", out_buffer)
+        print("IOCTL failed. Error status_code:", out_buffer.value)
     else:
         print("IOCTL succeeded, bytes returned:", bytes_returned.value)

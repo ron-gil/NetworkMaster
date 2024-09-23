@@ -8,6 +8,8 @@ GUID inboundSubLayerKey;
 GUID filterGuids[MAX_FILTERS];
 UINT16 filterCount = 0;
 
+UINT16 stopInboundFilterIndex;
+
 BOOL IsGuidZero(const GUID* guid) {
     if (guid->Data1 == 0 &&
         guid->Data2 == 0 &&
@@ -47,6 +49,9 @@ NTSTATUS RemoveFilter(GUID* filterGuid) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Successfully deleted filter with GUID "GUID_FORMAT"\n", GUID_ARG(*filterGuid)));
         // Zero out the guid to signal no longer viable for use
         ZeroGuid(filterGuid);
+        
+        // Decrease the current filters amount
+        filterCount--;
     }
     return status;
 }
@@ -56,11 +61,12 @@ NTSTATUS RemoveFilterByIndex(UINT16 index) {
     if (index < 0 || index >= MAX_FILTERS) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed to delete filter: Invalid index given\n"));
     }
-    status = RemoveFilter(&filterGuids[index]);
-    // Only decrease count of current filters if successfuly deleted the filter
-    if (NT_SUCCESS(status)) {
-        filterCount--;
+    if (IsGuidZero(&filterGuids[index])) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Filter already deleted.\n"));
+        return STATUS_SUCCESS;
     }
+    status = RemoveFilter(&filterGuids[index]);
+
     return status;
 }
 
@@ -73,7 +79,8 @@ NTSTATUS CreateFilter(
     UINT32 numConditions,
     FWPM_FILTER_CONDITION0* conditions,
     wchar_t* name,
-    wchar_t* description
+    wchar_t* description,
+    UINT16* filterIndex
 ) {
     wchar_t fullName[MAX_NAME_LENGTH];
 
@@ -94,7 +101,7 @@ NTSTATUS CreateFilter(
         return status;
     }
 
-    status = SaveFilterGuid(&filterKey);
+    status = SaveFilterGuid(&filterKey, filterIndex);
     if (!NT_SUCCESS(status)) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: CreateFilter failed saving filter guid with status %X\n", status));
         return status;
@@ -112,7 +119,7 @@ NTSTATUS CreateFilter(
     fwpFilter.subLayerKey = *subLayerKey;
     fwpFilter.weight.type = FWP_EMPTY; // auto-weight
     //fwpFilter.numFilterConditions = 0; // applies to all traffic
-    fwpFilter.numFilterConditions = numConditions; // applies to all traffic
+    fwpFilter.numFilterConditions = numConditions;
     fwpFilter.filterCondition = conditions;
 
     // Ensure the combined length does not exceed the buffer size
@@ -210,7 +217,7 @@ NTSTATUS FindFilterKeyByName(wchar_t* name, GUID* placeholderKey) {
     return STATUS_SUCCESS;
 }
 
-NTSTATUS SaveFilterGuid(const GUID* guid) {
+NTSTATUS SaveFilterGuid(const GUID* guid, UINT16* filterIndex) {
     // Check if there's room for another filter
     if (filterCount >= MAX_FILTERS) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Adding filter failed - Max filters reached\n"));
@@ -220,7 +227,9 @@ NTSTATUS SaveFilterGuid(const GUID* guid) {
     for (UINT16 i = 0; i < MAX_FILTERS; i++)
     {
         if (IsGuidZero(&filterGuids[i])) {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Saving filter guid in index: %d, current amount of filters: %d\n", i, filterCount));
             filterGuids[i] = *guid;
+            *filterIndex = i;
             filterCount++;
             return STATUS_SUCCESS;
         }
