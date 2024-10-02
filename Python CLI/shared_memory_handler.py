@@ -48,7 +48,7 @@ def open_shared_memory():
     )
 
     if not hFileMap or hFileMap == INVALID_HANDLE_VALUE:
-        print("Failed to create or open shared memory. Error:", ctypes.GetLastError())
+        print("Failed to open shared memory. Error:", ctypes.GetLastError())
         return None
 
     # Map view of the file to get a pointer to the shared memory

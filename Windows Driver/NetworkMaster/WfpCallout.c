@@ -96,7 +96,7 @@ VOID NTAPI LoggingPacketsClassifyFn(
     UNREFERENCED_PARAMETER(inMetaValues);
     UNREFERENCED_PARAMETER(inFixedValues);
 
-    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Classify function called for a new packet\n"));
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: ******** new packet arrived *******\n"));
 
     // Allow the packet to pass
     classifyOut->actionType = FWP_ACTION_PERMIT;
@@ -105,19 +105,15 @@ VOID NTAPI LoggingPacketsClassifyFn(
         // Cast layerData to NET_BUFFER_LIST
         const NET_BUFFER_LIST* netBufferList = (const NET_BUFFER_LIST*)layerData;
 
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Extracting packet data from NET_BUFFER_LIST\n"));
-
         // Calculate the size of the packet data
         SIZE_T packetSize = 0;
         const BYTE* packetData = GetPacketData(netBufferList, &packetSize);
 
         if (packetData != NULL) {
             // Process the captured packet by sending it to the user-mode application
-            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Packet captured, size: %Iu bytes\n", packetSize));
             ProcessCapturedPacket(packetData, packetSize);
 
             // Free the allocated memory for packet data
-            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Freeing memory allocated for packet data\n"));
             ExFreePoolWithTag((VOID*)packetData, 'pktd');
         }
         else {
@@ -132,8 +128,6 @@ VOID NTAPI LoggingPacketsClassifyFn(
 SIZE_T GetPacketSize(const NET_BUFFER_LIST* nbl) {
     SIZE_T packetSize = 0;
 
-    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Calculating packet size\n"));
-
     if (nbl != NULL) {
         const NET_BUFFER* nb = NET_BUFFER_LIST_FIRST_NB(nbl);
         while (nb != NULL) {
@@ -143,7 +137,7 @@ SIZE_T GetPacketSize(const NET_BUFFER_LIST* nbl) {
         }
     }
 
-    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Packet size calculated: %Iu bytes\n", packetSize));
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Packet size is %Iu bytes\n", packetSize));
     return packetSize;
 }
 
@@ -156,7 +150,6 @@ const BYTE* GetPacketData(const NET_BUFFER_LIST* nbl, SIZE_T* packetSize) {
 
     // Calculate the total packet size
     *packetSize = GetPacketSize(nbl);
-    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Packet size calculated: %zu\n", *packetSize));
 
     // Ensure packet size is valid before allocation
     if (*packetSize == 0 || *packetSize > SHARED_MEMORY_SIZE) { // Define MAX_PACKET_SIZE as appropriate
@@ -166,8 +159,12 @@ const BYTE* GetPacketData(const NET_BUFFER_LIST* nbl, SIZE_T* packetSize) {
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Allocating memory for packet data\n"));
 
+    ////! debug
+    //KIRQL currentIrql = KeGetCurrentIrql();  // Get the current IRQL
+    //KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Current IRQL is: %u\n", currentIrql));
+
     // Allocate memory for the packet data
-    BYTE* packetData = ExAllocatePool2(NonPagedPool, *packetSize, 'pktd');
+    BYTE* packetData = ExAllocatePool2(POOL_FLAG_NON_PAGED, *packetSize, 'pktd');
     if (packetData == NULL) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to allocate memory for packet data\n"));
         *packetSize = 0;

@@ -1,7 +1,7 @@
 #pragma once
 #include <ntddk.h>
 
-
+#define OUTPUT_BUFFER_LENGTH 1024
 
 NTSTATUS InitPacketLogging();
 //NTSTATUS AddFilterFromBuffer(_In_ WDFREQUEST Request);

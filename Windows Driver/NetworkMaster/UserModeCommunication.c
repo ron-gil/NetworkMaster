@@ -113,7 +113,7 @@ VOID ProcessCapturedPacket(
     _In_ SIZE_T packetSize        // Size of the raw packet data
 )
 {
-    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Writing the packetData to the shared memory\n"));
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Writing packet to shared memory\n"));
 
     // Ensure the packet size does not exceed the shared memory size
     SIZE_T sizeToCopy = min(packetSize, SHARED_MEMORY_SIZE);

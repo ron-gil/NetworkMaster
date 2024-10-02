@@ -1,6 +1,8 @@
 import ctypes
 from ctypes import wintypes
 
+OUTPUT_BUFFER_LENGTH = 1024
+
 # ioctl codes
 IOCTL_INIT_PACKET_LOGGING = 0x221FFC  # CTL_CODE(0x00000022, 0x7ff, 0x0, 0x0)
 IOCTL_STOP_INBOUND_TRAFFIC = 0x222008  # CTL_CODE(0x00000022, 0x802, 0x0, 0x0)
@@ -72,7 +74,7 @@ def close_device(handle):
 def send_ioctl(handle, ioctl_code):
     # Create buffers
     in_buffer = ctypes.create_string_buffer(0)  # Empty buffer with size 0
-    out_buffer = ctypes.create_string_buffer(1024)  # Adjust size as needed
+    out_buffer = ctypes.create_string_buffer(OUTPUT_BUFFER_LENGTH)
     bytes_returned = wintypes.DWORD()
 
     # Send IOCTL

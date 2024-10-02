@@ -197,8 +197,8 @@ NetworkMasterEvtIoDeviceControl(
 )
 {
     NTSTATUS status = STATUS_SUCCESS;
-    /*NTSTATUS* outBuffer = NULL;
-    size_t bufferSize = 0;*/
+    NTSTATUS* outBuffer = NULL;
+    size_t bufferSize = 0;
 
     UNREFERENCED_PARAMETER(Queue);
     UNREFERENCED_PARAMETER(InputBufferLength);
@@ -206,21 +206,21 @@ NetworkMasterEvtIoDeviceControl(
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Received IOCTL Code: %X\n", IoControlCode));
     
-    //// Check if the output buffer length is sufficient for an NTSTATUS
-    //if (OutputBufferLength < sizeof(NTSTATUS)) {
-    //    status = STATUS_BUFFER_TOO_SMALL;
-    //    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Buffer OutputBuffer size set is too small\n"));
-    //    WdfRequestComplete(Request, status);
-    //    return status;
-    //}
+    // Check if the output buffer length is sufficient for an NTSTATUS
+    if (OutputBufferLength < OUTPUT_BUFFER_LENGTH) {
+        status = STATUS_BUFFER_TOO_SMALL;
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Buffer OutputBuffer size set is too small\n"));
+        WdfRequestComplete(Request, status);
+        return status;
+    }
 
-    //// Retrieve the output buffer
-    //status = WdfRequestRetrieveOutputBuffer(Request, sizeof(NTSTATUS), (PVOID*)&outBuffer, &bufferSize);
-    //if (!NT_SUCCESS(status)) {
-    //    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to retrieve outputBuffer\n"));
-    //    WdfRequestComplete(Request, status);
-    //    return status;
-    //}
+    // Retrieve the output buffer
+    status = WdfRequestRetrieveOutputBuffer(Request, sizeof(NTSTATUS), (PVOID*)&outBuffer, &bufferSize);
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to retrieve outputBuffer\n"));
+        WdfRequestComplete(Request, status);
+        return status;
+    }
 
     switch (IoControlCode) {
     case IOCTL_INIT_PACKET_LOGGING:
