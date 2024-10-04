@@ -52,6 +52,7 @@ NTSTATUS CreateSharedMemoryAndEvent()
         IoFreeMdl(sharedMemoryMdl);
         return STATUS_UNSUCCESSFUL;
     }
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Shared Memory User Address: %p\n", sharedMemoryUserVa));
 
     // Create an event for notifying user-mode when data is available
     RtlInitUnicodeString(&eventName, L"\\BaseNamedObjects\\"PACKET_CAPTURE_EVENT_NAME);
@@ -62,7 +63,6 @@ NTSTATUS CreateSharedMemoryAndEvent()
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed to create user-mode event.\n"));
         return status;
     }
-    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Shared Memory User Address: %p\n", sharedMemoryUserVa));
 
     return STATUS_SUCCESS;
 }

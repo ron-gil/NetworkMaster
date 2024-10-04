@@ -1,6 +1,8 @@
 import ctypes
 from ctypes import wintypes
 
+device_handle = None
+
 OUTPUT_BUFFER_LENGTH = 1024
 
 # ioctl codes
@@ -49,7 +51,8 @@ def open_device():
     ]
     kernel32.CreateFileW.restype = wintypes.HANDLE
 
-    handle = kernel32.CreateFileW(
+    global device_handle
+    device_handle = kernel32.CreateFileW(
         r"\\.\NetworkMaster",
         GENERIC_READ | GENERIC_WRITE,
         0,
@@ -59,19 +62,21 @@ def open_device():
         None,
     )
 
-    if handle == INVALID_HANDLE_VALUE:
+    if device_handle == INVALID_HANDLE_VALUE:
         print("Failed to open device. Error:", ctypes.GetLastError())
-        return None
-    return handle
+        return False
+    return True
 
 
-def close_device(handle):
+def close_device():
     # Ensure handle is cast to the correct type before closing
-    if handle and handle != INVALID_HANDLE_VALUE:
-        kernel32.CloseHandle(ctypes.c_void_p(handle))
+    if device_handle and device_handle != INVALID_HANDLE_VALUE:
+        kernel32.CloseHandle(ctypes.c_void_p(device_handle))
+        print("Device handle closed.")
 
 
-def send_ioctl(handle, ioctl_code):
+
+def send_ioctl(ioctl_code):
     # Create buffers
     in_buffer = ctypes.create_string_buffer(0)  # Empty buffer with size 0
     out_buffer = ctypes.create_string_buffer(OUTPUT_BUFFER_LENGTH)
@@ -79,7 +84,7 @@ def send_ioctl(handle, ioctl_code):
 
     # Send IOCTL
     success = kernel32.DeviceIoControl(
-        handle,
+        device_handle,
         ioctl_code,
         ctypes.byref(in_buffer),
         ctypes.sizeof(in_buffer),
@@ -90,6 +95,10 @@ def send_ioctl(handle, ioctl_code):
     )
 
     if not success:
-        print("IOCTL failed. Error status_code:", out_buffer.value)
+        # Get the error code using GetLastError
+        error_code = kernel32.GetLastError()
+        print(f"IOCTL failed. Error code: {error_code}")
+        return None, None
     else:
-        print("IOCTL succeeded, bytes returned:", bytes_returned.value)
+        print(f"IOCTL succeeded, bytes returned: {bytes_returned.value}")
+        return out_buffer.raw[: bytes_returned.value], bytes_returned.value

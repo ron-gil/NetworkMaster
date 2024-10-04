@@ -197,22 +197,15 @@ NetworkMasterEvtIoDeviceControl(
 )
 {
     NTSTATUS status = STATUS_SUCCESS;
-    NTSTATUS* outBuffer = NULL;
+    PVOID* outBuffer = NULL;
     size_t bufferSize = 0;
+    size_t returnedInformationSize = 0;
 
     UNREFERENCED_PARAMETER(Queue);
     UNREFERENCED_PARAMETER(InputBufferLength);
     UNREFERENCED_PARAMETER(OutputBufferLength);
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Received IOCTL Code: %X\n", IoControlCode));
-    
-    // Check if the output buffer length is sufficient for an NTSTATUS
-    if (OutputBufferLength < OUTPUT_BUFFER_LENGTH) {
-        status = STATUS_BUFFER_TOO_SMALL;
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Buffer OutputBuffer size set is too small\n"));
-        WdfRequestComplete(Request, status);
-        return status;
-    }
 
     // Retrieve the output buffer
     status = WdfRequestRetrieveOutputBuffer(Request, sizeof(NTSTATUS), (PVOID*)&outBuffer, &bufferSize);
@@ -232,7 +225,26 @@ NetworkMasterEvtIoDeviceControl(
         }
         else {
             KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to initialize packet logging. Status: %X\n", status));
+            break;
         }
+
+        // Ensure the output buffer length is sufficient for a PVOID (the size of a pointer)
+        if (OutputBufferLength < sizeof(PVOID)) {
+            status = STATUS_BUFFER_TOO_SMALL;
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Output buffer too small\n"));
+            break;
+        }
+
+        // Retrieve the output buffer
+        status = WdfRequestRetrieveOutputBuffer(Request, sizeof(PVOID), (PVOID*)&outBuffer, &bufferSize);
+        if (!NT_SUCCESS(status)) {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to retrieve output buffer\n"));
+            break;
+        }
+
+        // Copy sharedMemoryUserVa to the output buffer
+        *outBuffer = sharedMemoryUserVa;
+        returnedInformationSize = sizeof(PVOID);
         break;
     //case IOCTL_ADD_FILTER:
     //    // Handle adding a filter
@@ -294,7 +306,7 @@ NetworkMasterEvtIoDeviceControl(
     }
 
     // Complete the request and return the status
-    WdfRequestComplete(Request, status);
+    WdfRequestCompleteWithInformation(Request, status, returnedInformationSize);
 
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: IOCTL request completed with status: %X\n", status));
    
