@@ -3,9 +3,8 @@
 #include <ntifs.h>
 #include <wdf.h>
 
-#define CLEANUP_TIMEOUT 60 * 1000 // Timeout in milliseconds
+#define CLEANUP_TIMEOUT 1000 * 60 * 15 // Timeout in milliseconds (15 minutes)
 #define SHARED_MEMORY_SIZE 4096  // Size of the shared memory
-#define SHARED_MEMORY_NAME L"NetworkMasterPacketDump"
 #define PACKET_CAPTURE_EVENT_NAME L"PacketCaptureEvent"
 
 extern BOOLEAN isPacketLoggingEnabled;
@@ -28,3 +27,4 @@ VOID CleanupResources(VOID);
 VOID TimerCallback(_In_ WDFTIMER Timer);
 
 NTSTATUS CreateTimer(WDFDEVICE hDevice);
+VOID StopTimer();

@@ -7,61 +7,50 @@ import ioctl_handler as ioctl
 import packet_handler as ph
 import ctypes
 from ctypes import wintypes
+import packet_display_window as window
+import threading
 
 event_handle = None
+shared_memory = None
 
 # Load Kernel32 DLL
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 SHARED_MEMORY_SIZE = 4096
-SHARED_MEMORY_NAME = "NetworkMasterPacketDump"
 PACKET_CAPTURE_EVENT_NAME = "Global\\PacketCaptureEvent"
+REFRESH_WAIT_TIME = 15 * 60  # 15 minutes
 
-# Define constants
-PAGE_READWRITE = 0x04
-FILE_MAP_READ = 0x04
 EVENT_ALL_ACCESS = 0x1F0003
 INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
 
+def open_shared_memory():
+    # Call the IOCTL to keep the connection alive
+    output_buffer, size_of_output = ioctl.send_ioctl(ioctl.IOCTL_INIT_PACKET_LOGGING)
 
-# def open_shared_memory():
-#     # Define function argument and return types for OpenFileMappingW
-#     kernel32.OpenFileMappingW.argtypes = [
-#         wintypes.DWORD,
-#         wintypes.BOOL,
-#         wintypes.LPCWSTR,
-#     ]
-#     kernel32.OpenFileMappingW.restype = wintypes.HANDLE
+    if not size_of_output and not output_buffer:
+        print("Init packet logging ioctl failed")
+        return False
 
-#     kernel32.MapViewOfFile.argtypes = [
-#         wintypes.HANDLE,  # hFileMappingObject
-#         wintypes.DWORD,  # dwDesiredAccess
-#         wintypes.DWORD,  # dwFileOffsetHigh
-#         wintypes.DWORD,  # dwFileOffsetLow
-#         ctypes.c_size_t,  # dwNumberOfBytesToMap
-#     ]
-#     kernel32.MapViewOfFile.restype = wintypes.LPVOID
+    if size_of_output != ctypes.sizeof(ctypes.c_void_p):
+        print("Invalid output size returned")
+        return False
 
-#     # Open the existing shared memory object
-#     hFileMap = kernel32.OpenFileMappingW(
-#         FILE_MAP_READ,  # Desired access (read-only in this case)
-#         False,  # Inherit handle
-#         SHARED_MEMORY_NAME,  # Name of the shared memory object
-#     )
+    # Convert the bytes-like object to an integer address
+    pointer_value = int.from_bytes(output_buffer, byteorder="little")
 
-#     if not hFileMap or hFileMap == INVALID_HANDLE_VALUE:
-#         print("Failed to open shared memory. Error:", ctypes.GetLastError())
-#         return None
+    # Now cast the integer address to a c_void_p (pointer)
+    shared_memory_pointer = ctypes.c_void_p(pointer_value)
 
-#     # Map view of the file to get a pointer to the shared memory
-#     pBuffer = kernel32.MapViewOfFile(hFileMap, FILE_MAP_READ, 0, 0, 0)
+    # Create a buffer pointing to that memory space
+    global shared_memory
+    shared_memory = (ctypes.c_char * SHARED_MEMORY_SIZE).from_address(
+        shared_memory_pointer.value
+    )
 
-#     if not pBuffer:
-#         print("Failed to map view of shared memory. Error:", ctypes.GetLastError())
-#         kernel32.CloseHandle(hFileMap)
-#         return None
-
-#     return pBuffer
+    print(
+        "Shared Memory opened successfully.\nAddress:", hex(shared_memory_pointer.value)
+    )
+    return True
 
 
 def open_event():
@@ -90,7 +79,7 @@ def open_event():
     return True
 
 
-def wait_for_packet(shared_memory):
+def wait_for_packet():
     if event_handle is None:
         print("Invalid event handle.")
         return
@@ -99,20 +88,18 @@ def wait_for_packet(shared_memory):
         # Wait for the event to be signaled
         result = win32event.WaitForSingleObject(event_handle, win32event.INFINITE)
         if result == win32event.WAIT_OBJECT_0:
-            print("Event signaled, packet ready to be read from shared memory.")
 
-            packet_data = read_received_packet(shared_memory)
+            packet_data = read_received_packet()
 
             ph.display_packet(packet_data)
         else:
             print(f"Unexpected result from event wait: {result}")
 
 
-def read_received_packet(shared_mem):
+def read_received_packet():
     try:
         # Read packet data from shared memory
-        # packet_data = shared_mem.read(SHARED_MEMORY_SIZE)
-        packet_data = shared_mem[:SHARED_MEMORY_SIZE]
+        packet_data = shared_memory[:SHARED_MEMORY_SIZE]
         return packet_data
     except Exception as e:
         print(f"Error reading packet: {e}")
@@ -121,7 +108,7 @@ def read_received_packet(shared_mem):
 
 def keep_connection_alive():
     while True:
-        time.sleep(15 * 60)  # Wait 15 minutes
+        time.sleep(REFRESH_WAIT_TIME - 2)
         try:
             # Call the IOCTL to keep the connection alive
             ioctl.send_ioctl(ioctl.IOCTL_INIT_PACKET_LOGGING)

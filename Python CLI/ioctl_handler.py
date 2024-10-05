@@ -6,6 +6,7 @@ device_handle = None
 OUTPUT_BUFFER_LENGTH = 1024
 
 # ioctl codes
+IOCTL_END_PACKET_LOGGING = 0x221FF8  # CTL_CODE(0x00000022, 0x7fe, 0x0, 0x0)
 IOCTL_INIT_PACKET_LOGGING = 0x221FFC  # CTL_CODE(0x00000022, 0x7ff, 0x0, 0x0)
 IOCTL_STOP_INBOUND_TRAFFIC = 0x222008  # CTL_CODE(0x00000022, 0x802, 0x0, 0x0)
 IOCTL_START_INBOUND_TRAFFIC = 0x222010  # CTL_CODE(0x00000022, 0x804, 0x0, 0x0)
@@ -73,7 +74,6 @@ def close_device():
     if device_handle and device_handle != INVALID_HANDLE_VALUE:
         kernel32.CloseHandle(ctypes.c_void_p(device_handle))
         print("Device handle closed.")
-
 
 
 def send_ioctl(ioctl_code):

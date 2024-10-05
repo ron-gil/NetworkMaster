@@ -157,14 +157,7 @@ VOID WfpCleanup()
     }
 
     // Stopping the clean up timer if it is active
-    if (timer != NULL && MmIsAddressValid(timer)) {
-        WdfTimerStop(timer, FALSE);
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Released Timer resources\n"));
-    }
-
-    // Cleaning up the resources related to user-mode communications if they haven't been released
-    CleanupResources();
-    isPacketLoggingEnabled = FALSE;
+    StopTimer();
     
     // Debugging info: WfpCleanup finished
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: WfpCleanup - End\n"));
@@ -245,6 +238,11 @@ NetworkMasterEvtIoDeviceControl(
         // Copy sharedMemoryUserVa to the output buffer
         *outBuffer = sharedMemoryUserVa;
         returnedInformationSize = sizeof(PVOID);
+        break;
+    case IOCTL_END_PACKET_LOGGING:
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Handling IOCTL_END_PACKET_LOGGING\n"));
+        // Handle stopping inbound traffic
+        StopTimer();
         break;
     //case IOCTL_ADD_FILTER:
     //    // Handle adding a filter

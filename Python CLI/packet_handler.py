@@ -1,8 +1,9 @@
 import struct
+import packet_display_window as window
 
 
 def display_packet(packet_data):
-    print(packet_data)
+    window.write_data(packet_data[:180])
     return
     # Assuming packet_data contains raw bytes from a packet
     print(f"Received Packet: {len(packet_data)} bytes")

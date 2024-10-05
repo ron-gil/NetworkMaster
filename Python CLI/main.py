@@ -5,10 +5,12 @@ import ctypes
 from ctypes import wintypes
 import signal
 import sys
+import packet_display_window as window
 
 
 def signal_handler(sig, frame):
     print("Signal received, exiting...")
+    ioctl.send_ioctl(ioctl.IOCTL_END_PACKET_LOGGING)
     smh.close_event_handle()  # Ensure the event handle is closed
     ioctl.close_device()
     sys.exit(0)  # Exit the program
@@ -19,41 +21,16 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 def init_driver_connection():
-    # Call the IOCTL to keep the connection alive
-    output_buffer, size_of_output = ioctl.send_ioctl(ioctl.IOCTL_INIT_PACKET_LOGGING)
-
-    if not size_of_output and not output_buffer:
-        print("Init packet logging ioctl failed")
+    # Open the shared memory between the driver and cli
+    if not smh.open_shared_memory():
         return False
-
-    if size_of_output != ctypes.sizeof(ctypes.c_void_p):
-        print("Invalid output size returned")
-        return False
-
-    # Convert the bytes-like object to an integer address
-    pointer_value = int.from_bytes(output_buffer, byteorder="little")
-
-    # Now cast the integer address to a c_void_p (pointer)
-    shared_memory_pointer = ctypes.c_void_p(pointer_value)
-
-    print("Shared Memory Address:", hex(shared_memory_pointer.value))
-
-    # Create a buffer pointing to that memory space
-    shared_memory = (ctypes.c_char * smh.SHARED_MEMORY_SIZE).from_address(
-        shared_memory_pointer.value
-    )
-
-    # Open shared memory
-    # shared_mem = smh.open_shared_memory()
-    # if not shared_mem:
-    #     return False
 
     # Open the kernel event to know when a new packet arrived
     if not smh.open_event():
         return False
 
     # Start a thread to wait for packets
-    packet_thread = threading.Thread(target=smh.wait_for_packet, args=(shared_memory,))
+    packet_thread = threading.Thread(target=smh.wait_for_packet)
     packet_thread.daemon = True
     packet_thread.start()
 
@@ -63,6 +40,7 @@ def init_driver_connection():
     connection_thread.start()
 
     print("Driver connection initialized and threads started.")
+    window.root.mainloop()
     return True
 
 
@@ -94,6 +72,7 @@ def main():
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:
+        ioctl.send_ioctl(ioctl.IOCTL_END_PACKET_LOGGING)
         smh.close_event_handle()
         ioctl.close_device()
 

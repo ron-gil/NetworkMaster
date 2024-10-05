@@ -178,7 +178,13 @@ NTSTATUS CreateTimer(WDFDEVICE hDevice)
     return STATUS_SUCCESS;
 }
 
+VOID StopTimer() {
+    if (timer != NULL) {
+        WdfTimerStop(timer, FALSE);
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Stopped Timer\n"));
+    }
 
-/*
-add ioctl to end packet logging which will be called by the cli upon exiting and will just call timer.stop
-*/
+    // Cleaning up the resources related to user-mode communications if they haven't been released
+    CleanupResources();
+    isPacketLoggingEnabled = FALSE;
+}
