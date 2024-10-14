@@ -3,8 +3,8 @@ import packet_display_window as window
 
 
 def display_packet(packet_data):
-    window.write_data(packet_data[:540])
-    return
+    # window.write_data(packet_data[:540])
+
     # Assuming packet_data contains raw bytes from a packet
     print(f"Received Packet: {len(packet_data)} bytes")
 
@@ -24,9 +24,11 @@ def display_packet(packet_data):
     # Display raw bytes (if necessary)
     print(packet_data.hex())
 
+if __name__ == "__main__":
+    packet_data = 
+    display_packet(packet_data)
 
 """
 ask saba gapeto to create all the structs in packetHeaders.h in python,
 and then in display_packet function, parse the bytes and display the packet according to the structs.
-add an ioctl end_packet_logging to tell the driver that cli has exited, and make sure then to test everything.
 """
