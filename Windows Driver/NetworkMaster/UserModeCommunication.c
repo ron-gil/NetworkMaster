@@ -183,6 +183,7 @@ VOID StopTimer() {
         WdfTimerStop(timer, FALSE);
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Stopped Timer\n"));
     }
+    timer = NULL;
 
     // Cleaning up the resources related to user-mode communications if they haven't been released
     CleanupResources();

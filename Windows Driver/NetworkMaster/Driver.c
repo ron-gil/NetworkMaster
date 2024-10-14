@@ -116,7 +116,7 @@ NetworkMasterEvtDeviceAdd(
     status = CreateCallout(
         pDeviceObject,
         &loggingPacketsCalloutKey,
-        &FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
+        &PACKET_LOGGING_LAYER,
         LoggingPacketsClassifyFn,
         LoggingPacketsNotifyFn,
         NULL,

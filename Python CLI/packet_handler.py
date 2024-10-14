@@ -3,7 +3,7 @@ import packet_display_window as window
 
 
 def display_packet(packet_data):
-    window.write_data(packet_data[:180])
+    window.write_data(packet_data[:540])
     return
     # Assuming packet_data contains raw bytes from a packet
     print(f"Received Packet: {len(packet_data)} bytes")
