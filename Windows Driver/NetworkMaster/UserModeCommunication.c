@@ -179,7 +179,7 @@ NTSTATUS CreateTimer(WDFDEVICE hDevice)
 }
 
 VOID StopTimer() {
-    if (timer != NULL) {
+    if (timer != NULL && isPacketLoggingEnabled != FALSE) {
         WdfTimerStop(timer, FALSE);
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Stopped Timer\n"));
     }

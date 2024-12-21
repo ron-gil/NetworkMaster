@@ -140,6 +140,9 @@ VOID WfpCleanup()
     // Debugging info: WfpCleanup called
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: WfpCleanup - Start\n"));
 
+    // Stopping the clean up timer if it is active
+    StopTimer();
+
     if (engineHandle) {
         RemoveAllFilters();
 
@@ -155,9 +158,6 @@ VOID WfpCleanup()
         FwpmEngineClose(engineHandle);
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: WfpEngineClosed\n"));
     }
-
-    // Stopping the clean up timer if it is active
-    StopTimer();
     
     // Debugging info: WfpCleanup finished
     KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: WfpCleanup - End\n"));

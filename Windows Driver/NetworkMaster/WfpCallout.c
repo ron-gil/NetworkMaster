@@ -151,19 +151,13 @@ const BYTE* GetPacketData(const NET_BUFFER_LIST* nbl, SIZE_T* packetSize) {
     // Calculate the total packet size
     *packetSize = GetPacketSize(nbl);
 
-    // Ensure packet size is valid before allocation
-    if (*packetSize == 0 || *packetSize > SHARED_MEMORY_SIZE) { // Define MAX_PACKET_SIZE as appropriate
+    // Validate packet size
+    if (*packetSize == 0 || *packetSize > SHARED_MEMORY_SIZE) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Invalid packet size: %zu\n", *packetSize));
         return NULL;
     }
 
-    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Allocating memory for packet data\n"));
-
-    ////! debug
-    //KIRQL currentIrql = KeGetCurrentIrql();  // Get the current IRQL
-    //KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Current IRQL is: %u\n", currentIrql));
-
-    // Allocate memory for the packet data
+    // Allocate memory for packet data
     BYTE* packetData = ExAllocatePool2(POOL_FLAG_NON_PAGED, *packetSize, 'pktd');
     if (packetData == NULL) {
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Failed to allocate memory for packet data\n"));
@@ -171,13 +165,19 @@ const BYTE* GetPacketData(const NET_BUFFER_LIST* nbl, SIZE_T* packetSize) {
         return NULL;
     }
 
-    // Copy the data from NET_BUFFER_LIST to packetData
     BYTE* dst = packetData;
     const NET_BUFFER* nb = NET_BUFFER_LIST_FIRST_NB(nbl);
     while (nb != NULL) {
         ULONG dataLength = NET_BUFFER_DATA_LENGTH(nb);
         ULONG mdlOffset = NET_BUFFER_DATA_OFFSET(nb);
         MDL* mdl = NET_BUFFER_FIRST_MDL(nb);
+
+        // Validate MDL and offset
+        if (mdl == NULL || mdlOffset >= MmGetMdlByteCount(mdl)) {
+            KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "NetworkMaster: Invalid MDL or offset\n"));
+            ExFreePoolWithTag(packetData, 'pktd');
+            return NULL;
+        }
 
         BYTE* src = MmGetSystemAddressForMdlSafe(mdl, NormalPagePriority);
         if (src == NULL) {
@@ -186,6 +186,7 @@ const BYTE* GetPacketData(const NET_BUFFER_LIST* nbl, SIZE_T* packetSize) {
             return NULL;
         }
 
+        // Copy packet data
         KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Copying %u bytes from MDL to packet data buffer\n", dataLength));
         RtlCopyMemory(dst, src + mdlOffset, dataLength);
         dst += dataLength;
@@ -193,9 +194,16 @@ const BYTE* GetPacketData(const NET_BUFFER_LIST* nbl, SIZE_T* packetSize) {
         nb = NET_BUFFER_NEXT_NB(nb);
     }
 
-    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Packet data successfully extracted\n"));
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "NetworkMaster: Packet data successfully extracted (size: %zu)\n", *packetSize));
+
+    for (SIZE_T i = 0; i < *packetSize; i++) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "%02X ", packetData[i]));
+    }
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "\n"));
+
     return packetData;
 }
+
 
 NTSTATUS LoggingPacketsNotifyFn(
     FWPS_CALLOUT_NOTIFY_TYPE notifyType,

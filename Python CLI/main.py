@@ -5,7 +5,8 @@ import ctypes
 from ctypes import wintypes
 import signal
 import sys
-import packet_display_window as window
+
+# import packet_display_window as window
 
 
 def signal_handler(sig, frame):
@@ -40,7 +41,7 @@ def init_driver_connection():
     connection_thread.start()
 
     print("Driver connection initialized and threads started.")
-    window.root.mainloop()
+    # window.root.mainloop()
     return True
 
 

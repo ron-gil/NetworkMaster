@@ -7,8 +7,6 @@ import ioctl_handler as ioctl
 import packet_handler as ph
 import ctypes
 from ctypes import wintypes
-import packet_display_window as window
-import threading
 
 event_handle = None
 shared_memory = None

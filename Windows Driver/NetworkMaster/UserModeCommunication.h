@@ -3,7 +3,7 @@
 #include <ntifs.h>
 #include <wdf.h>
 
-#define CLEANUP_TIMEOUT 1000 * 60 * 15 // Timeout in milliseconds (15 minutes)
+#define CLEANUP_TIMEOUT 1000 * 60 * 1 // Timeout in milliseconds (15 minutes)
 #define SHARED_MEMORY_SIZE 4096  // Size of the shared memory
 #define PACKET_CAPTURE_EVENT_NAME L"PacketCaptureEvent"
 
